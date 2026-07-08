@@ -42,7 +42,7 @@ export default function Config({ dominios, saveDominios }) {
             setSaved(true);
             setTimeout(() => setSaved(false), 1500);
         } catch (e) {
-            setError(e.message || "Erro ao guardar.");
+            setError(e?.response?.data?.detail || e?.message || "Erro ao guardar.");
         } finally {
             setBusy(false);
         }
