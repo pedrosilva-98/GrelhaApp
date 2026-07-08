@@ -57,6 +57,36 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
         debouncedSave(inst.id, clean);
     }
 
+    function focusCell(rowIdx, colIdx) {
+        const row = alunos[rowIdx];
+        const q = inst?.questoes[colIdx];
+        if (!row || !q) return;
+        const el = document.querySelector(`[data-testid="nota-${row.id}-${q.id}"]`);
+        if (el) { el.focus(); if (el.select) el.select(); }
+    }
+
+    function onKeyDown(e, rowIdx, colIdx) {
+        const key = e.key;
+        const rowsN = alunos.length;
+        const colsN = inst?.questoes.length || 0;
+        if (key === "Enter") {
+            e.preventDefault();
+            const next = e.shiftKey ? rowIdx - 1 : rowIdx + 1;
+            if (next >= 0 && next < rowsN) focusCell(next, colIdx);
+        } else if (key === "ArrowDown") {
+            e.preventDefault();
+            if (rowIdx + 1 < rowsN) focusCell(rowIdx + 1, colIdx);
+        } else if (key === "ArrowUp") {
+            e.preventDefault();
+            if (rowIdx - 1 >= 0) focusCell(rowIdx - 1, colIdx);
+        } else if (key === "ArrowRight" && e.target.selectionStart === e.target.value.length) {
+            // move to next col
+            if (colIdx + 1 < colsN) { e.preventDefault(); focusCell(rowIdx, colIdx + 1); }
+        } else if (key === "ArrowLeft" && e.target.selectionStart === 0) {
+            if (colIdx - 1 >= 0) { e.preventDefault(); focusCell(rowIdx, colIdx - 1); }
+        }
+    }
+
     if (!insts.length) {
         return (
             <div className="card-surface p-12 text-center anim-in">
@@ -78,6 +108,9 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                 <Info size={16} className="flex-shrink-0 mt-0.5" />
                 <div>
                     <strong>Introduza as notas de 0 a 10</strong> em cada questão, independentemente da cotação (pontos). A classificação em percentagem e por domínio é calculada automaticamente, ponderando as respostas pela cotação de cada questão.
+                    <div className="mt-1 text-[12px] text-[#2B5A84]/80">
+                        Atalhos: <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> desce, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Shift</kbd>+<kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> sobe, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Tab</kbd> avança questão, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">↑ ↓ ← →</kbd> navegam.
+                    </div>
                 </div>
             </div>
 
@@ -120,12 +153,12 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                             <tbody>
                                 {alunos.length === 0 ? (
                                     <tr><td colSpan={inst.questoes.length + 3} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
-                                ) : alunos.map((a, i) => {
+                                ) : alunos.map((a, rowIdx) => {
                                     const classif = calcClassif(instWithNotas, a.id);
                                     return (
-                                        <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
+                                        <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${rowIdx % 2 === 1 ? "bg-page/60" : ""}`}>
                                             <td className="px-5 py-2.5 font-medium text-brand-charcoal whitespace-nowrap">{a.nome}</td>
-                                            {inst.questoes.map((q) => {
+                                            {inst.questoes.map((q, colIdx) => {
                                                 const cur = notas[a.id]?.[q.id];
                                                 return (
                                                     <td key={q.id} className="px-1.5 py-1.5 text-center">
@@ -137,6 +170,7 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                                                             max={NOTA_MAX}
                                                             value={cur ?? ""}
                                                             onChange={(e) => updateNota(a.id, q.id, e.target.value)}
+                                                            onKeyDown={(e) => onKeyDown(e, rowIdx, colIdx)}
                                                             className="grid-cell-input"
                                                             placeholder="0-10"
                                                         />

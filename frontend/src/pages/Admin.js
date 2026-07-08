@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { LogOut, Plus, Trash2, GraduationCap, Copy } from "lucide-react";
+import ResetPasswordModal from "@/components/ResetPasswordModal";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound } from "lucide-react";
 
 export default function Admin() {
     const { user, logout } = useAuth();
@@ -12,6 +13,7 @@ export default function Admin() {
     const [form, setForm] = useState({ nome: "", email: "", password: "" });
     const [creating, setCreating] = useState(false);
     const [justCreated, setJustCreated] = useState(null);
+    const [resetTarget, setResetTarget] = useState(null);
 
     async function load() {
         try {
@@ -140,14 +142,24 @@ export default function Admin() {
                                         {t.created_at ? new Date(t.created_at).toLocaleDateString("pt-PT") : "—"}
                                     </td>
                                     <td className="px-5 py-3 text-right">
-                                        <button
-                                            data-testid={`delete-teacher-${t.id}`}
-                                            onClick={() => del(t.id)}
-                                            className="btn-danger-ghost"
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        <div className="flex justify-end gap-1">
+                                            <button
+                                                data-testid={`reset-teacher-${t.id}`}
+                                                onClick={() => setResetTarget(t)}
+                                                className="btn-ghost !px-2 !py-1.5"
+                                                title="Redefinir palavra-passe"
+                                            >
+                                                <KeyRound size={14} />
+                                            </button>
+                                            <button
+                                                data-testid={`delete-teacher-${t.id}`}
+                                                onClick={() => del(t.id)}
+                                                className="btn-danger-ghost"
+                                                title="Eliminar"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -157,8 +169,7 @@ export default function Admin() {
             </main>
 
             {showModal && (
-                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-                    <div className="card-surface w-full max-w-md p-8 anim-in" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowModal(false)}>                    <div className="card-surface w-full max-w-md p-8 anim-in" onClick={(e) => e.stopPropagation()}>
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-2">Nova conta</div>
                         <h2 className="font-serif text-2xl text-brand-forest mb-6">Criar professor</h2>
                         <p className="text-xs text-brand-charcoal/60 mb-6 -mt-3">
@@ -186,6 +197,13 @@ export default function Admin() {
                         </form>
                     </div>
                 </div>
+            )}
+
+            {resetTarget && (
+                <ResetPasswordModal
+                    teacher={resetTarget}
+                    onClose={() => setResetTarget(null)}
+                />
             )}
         </div>
     );

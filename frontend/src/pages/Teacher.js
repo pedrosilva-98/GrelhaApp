@@ -8,8 +8,9 @@ import LancarNotas from "@/pages/sections/LancarNotas";
 import Config from "@/pages/sections/Config";
 import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
+import ChangePasswordModal from "@/components/ChangePasswordModal";
 import { exportGrelhaPDF } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -28,7 +29,10 @@ export default function Teacher() {
     const [turmas, setTurmas] = useState([]);
     const [turmaId, setTurmaId] = useState(() => localStorage.getItem(LS_TURMA_KEY) || null);
     const [showTurmaModal, setShowTurmaModal] = useState(false);
+    const [editTurmaModal, setEditTurmaModal] = useState(false);
     const [showTurmaPicker, setShowTurmaPicker] = useState(false);
+    const [showChangePw, setShowChangePw] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
 
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
@@ -95,6 +99,20 @@ export default function Teacher() {
         setShowTurmaModal(false);
     }
 
+    async function editTurma(payload) {
+        if (!turmaId) return;
+        const { data } = await api.put(`/turmas/${turmaId}`, payload);
+        setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, ...data } : t)));
+        setEditTurmaModal(false);
+    }
+
+    async function duplicateTurma() {
+        if (!turmaAtiva) return;
+        const { data } = await api.post(`/turmas/${turmaAtiva.id}/duplicate`);
+        setTurmas((s) => [...s, data]);
+        setTurmaId(data.id);
+    }
+
     async function deleteTurma() {
         if (!turmaAtiva) return;
         if (!window.confirm(`Eliminar a turma "${turmaAtiva.disciplina} ${turmaAtiva.ano}${turmaAtiva.turma}" e todos os seus alunos, instrumentos e notas? Esta ação é irreversível.`)) return;
@@ -112,6 +130,11 @@ export default function Teacher() {
     async function addAluno(nome) {
         const { data } = await api.post("/alunos", { nome }, { params: { turma_id: turmaId } });
         setAlunos((s) => [...s, data]);
+    }
+    async function addAlunosBulk(nomes) {
+        const { data } = await api.post("/alunos/bulk", { nomes }, { params: { turma_id: turmaId } });
+        setAlunos((s) => [...s, ...(data.alunos || [])]);
+        return data;
     }
     async function delAluno(id) {
         if (!window.confirm("Eliminar aluno?")) return;
@@ -208,13 +231,29 @@ export default function Teacher() {
                                                     <Plus size={14} /> Nova turma
                                                 </button>
                                                 {turmaAtiva && (
-                                                    <button
-                                                        data-testid="picker-del-turma"
-                                                        onClick={() => { setShowTurmaPicker(false); deleteTurma(); }}
-                                                        className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
-                                                    >
-                                                        <Trash2 size={14} /> Eliminar turma atual
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            data-testid="picker-edit-turma"
+                                                            onClick={() => { setShowTurmaPicker(false); setEditTurmaModal(true); }}
+                                                            className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                                        >
+                                                            <Pencil size={14} /> Renomear turma
+                                                        </button>
+                                                        <button
+                                                            data-testid="picker-dup-turma"
+                                                            onClick={() => { setShowTurmaPicker(false); duplicateTurma(); }}
+                                                            className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                                        >
+                                                            <Copy size={14} /> Duplicar turma
+                                                        </button>
+                                                        <button
+                                                            data-testid="picker-del-turma"
+                                                            onClick={() => { setShowTurmaPicker(false); deleteTurma(); }}
+                                                            className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
+                                                        >
+                                                            <Trash2 size={14} /> Eliminar turma atual
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                         </>
@@ -226,12 +265,41 @@ export default function Teacher() {
                             <button data-testid="export-pdf-btn" onClick={onExport} disabled={!turmaAtiva} className="btn-ghost">
                                 <Download size={15} /> Exportar PDF
                             </button>
-                            <div className="text-right hidden sm:block">
-                                <div className="text-sm font-medium text-brand-charcoal">{user?.nome}</div>
-                                <div className="text-[11px] text-brand-sage">{user?.email}</div>
+                            <div className="relative">
+                                <button
+                                    data-testid="user-menu-btn"
+                                    onClick={() => setUserMenuOpen((v) => !v)}
+                                    className="text-right hidden sm:flex items-center gap-2 px-2 py-1 rounded-md hover:bg-page transition-colors duration-200"
+                                >
+                                    <div>
+                                        <div className="text-sm font-medium text-brand-charcoal">{user?.nome}</div>
+                                        <div className="text-[11px] text-brand-sage">{user?.email}</div>
+                                    </div>
+                                    <ChevronDown size={14} className="text-brand-sage" />
+                                </button>
+                                {userMenuOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                                        <div className="absolute right-0 top-full mt-1 z-50 card-surface shadow-lg min-w-[220px] overflow-hidden" data-testid="user-menu">
+                                            <button
+                                                data-testid="menu-change-pw"
+                                                onClick={() => { setUserMenuOpen(false); setShowChangePw(true); }}
+                                                className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                            >
+                                                <KeyRound size={14} /> Alterar palavra-passe
+                                            </button>
+                                            <button
+                                                onClick={() => { setUserMenuOpen(false); logout(); }}
+                                                className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
+                                            >
+                                                <LogOut size={14} /> Sair
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                            <button data-testid="logout-btn" onClick={logout} className="btn-ghost" title="Sair">
-                                <LogOut size={15} /> Sair
+                            <button data-testid="logout-btn" onClick={logout} className="btn-ghost sm:hidden" title="Sair">
+                                <LogOut size={15} />
                             </button>
                         </div>
                     </div>
@@ -271,7 +339,7 @@ export default function Teacher() {
                 ) : (
                     <>
                         {tab === "dashboard" && <Dashboard alunos={alunos} insts={insts} dominios={dominios} />}
-                        {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} />}
+                        {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} />}
                         {tab === "instrumentos" && <Instrumentos insts={insts} dominios={dominios} addInstrumento={addInstrumento} updateInstrumento={updateInstrumento} delInstrumento={delInstrumento} />}
                         {tab === "notas" && <LancarNotas alunos={alunos} insts={insts} dominios={dominios} saveNotas={saveNotas} />}
                         {tab === "config" && <Config dominios={dominios} saveDominios={saveDominios} />}
@@ -281,6 +349,18 @@ export default function Teacher() {
 
             {showTurmaModal && (
                 <TurmaFormModal onClose={() => setShowTurmaModal(false)} onSubmit={createTurma} />
+            )}
+
+            {editTurmaModal && turmaAtiva && (
+                <TurmaFormModal
+                    initial={turmaAtiva}
+                    onClose={() => setEditTurmaModal(false)}
+                    onSubmit={editTurma}
+                />
+            )}
+
+            {showChangePw && (
+                <ChangePasswordModal onClose={() => setShowChangePw(false)} />
             )}
         </div>
     );

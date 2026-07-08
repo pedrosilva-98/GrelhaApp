@@ -1,10 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, School } from "lucide-react";
 
-export default function TurmaFormModal({ onClose, onSubmit, title = "Nova turma" }) {
-    const [form, setForm] = useState({ disciplina: "", ano: "", turma: "" });
+export default function TurmaFormModal({ initial, onClose, onSubmit, title }) {
+    const isEdit = !!initial;
+    const [form, setForm] = useState({
+        disciplina: initial?.disciplina || "",
+        ano: initial?.ano || "",
+        turma: initial?.turma || "",
+    });
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+
+    useEffect(() => {
+        if (initial) {
+            setForm({
+                disciplina: initial.disciplina || "",
+                ano: initial.ano || "",
+                turma: initial.turma || "",
+            });
+        }
+    }, [initial]);
 
     async function submit(e) {
         e.preventDefault();
@@ -17,7 +32,7 @@ export default function TurmaFormModal({ onClose, onSubmit, title = "Nova turma"
                 turma: form.turma.trim(),
             });
         } catch (e) {
-            setError(e.message || "Erro ao guardar.");
+            setError(e?.response?.data?.detail || e.message || "Erro ao guardar.");
         } finally {
             setBusy(false);
         }
@@ -31,7 +46,7 @@ export default function TurmaFormModal({ onClose, onSubmit, title = "Nova turma"
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
                             <School size={12} /> Turma
                         </div>
-                        <h2 className="font-serif text-2xl text-brand-forest">{title}</h2>
+                        <h2 className="font-serif text-2xl text-brand-forest">{title || (isEdit ? "Editar turma" : "Nova turma")}</h2>
                     </div>
                     <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
                         <X size={20} />
@@ -57,7 +72,7 @@ export default function TurmaFormModal({ onClose, onSubmit, title = "Nova turma"
                     <div className="flex gap-3 pt-3">
                         <button type="button" onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
                         <button type="submit" data-testid="turma-submit" disabled={busy} className="btn-primary flex-1 justify-center">
-                            {busy ? "A guardar..." : "Guardar"}
+                            {busy ? "A guardar..." : (isEdit ? "Guardar alterações" : "Criar turma")}
                         </button>
                     </div>
                 </form>

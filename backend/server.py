@@ -115,6 +115,13 @@ class TeacherCreate(BaseModel):
     password: str
     nome: str
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+class PasswordReset(BaseModel):
+    new_password: str
+
 class TurmaCreate(BaseModel):
     disciplina: str
     ano: str
@@ -135,6 +142,9 @@ class DominiosUpdate(BaseModel):
 
 class AlunoIn(BaseModel):
     nome: str
+
+class AlunosBulkIn(BaseModel):
+    nomes: List[str]
 
 class Questao(BaseModel):
     id: str
@@ -176,6 +186,16 @@ async def me(user: dict = Depends(get_current_user)):
 async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
+@api.post("/auth/change-password")
+async def change_password(body: PasswordChange, user: dict = Depends(get_current_user)):
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="A nova palavra-passe deve ter pelo menos 4 caracteres")
+    full = await db.users.find_one({"id": user["id"]})
+    if not full or not verify_password(body.current_password, full["password_hash"]):
+        raise HTTPException(status_code=400, detail="Palavra-passe atual incorreta")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
+    return {"ok": True}
+
 # ─── Admin ────────────────────────────────────────────────────────────────────
 
 @api.get("/admin/teachers")
@@ -211,6 +231,18 @@ async def delete_teacher(teacher_id: str, _: dict = Depends(require_admin)):
     await db.turmas.delete_many({"prof_id": teacher_id})
     return {"ok": True}
 
+@api.post("/admin/teachers/{teacher_id}/reset-password")
+async def reset_teacher_password(teacher_id: str, body: PasswordReset, _: dict = Depends(require_admin)):
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="A palavra-passe deve ter pelo menos 4 caracteres")
+    res = await db.users.update_one(
+        {"id": teacher_id, "role": "teacher"},
+        {"$set": {"password_hash": hash_password(body.new_password)}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    return {"ok": True}
+
 # ─── Turmas ───────────────────────────────────────────────────────────────────
 
 @api.get("/turmas")
@@ -230,6 +262,22 @@ async def create_turma(body: TurmaCreate, user: dict = Depends(require_teacher))
         "ano": body.ano.strip(),
         "turma": body.turma.strip(),
         "dominios": [dict(d) for d in DEFAULT_DOMINIOS],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.turmas.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.post("/turmas/{turma_id}/duplicate")
+async def duplicate_turma(turma_id: str, user: dict = Depends(require_teacher)):
+    src = await get_turma_or_404(turma_id, user)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "prof_id": user["id"],
+        "disciplina": src.get("disciplina", ""),
+        "ano": src.get("ano", ""),
+        "turma": (src.get("turma", "") + " (cópia)").strip(),
+        "dominios": [dict(d) for d in (src.get("dominios") or DEFAULT_DOMINIOS)],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.turmas.insert_one(doc)
@@ -307,6 +355,21 @@ async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depe
     await db.alunos.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+@api.post("/alunos/bulk")
+async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
+    await get_turma_or_404(turma_id, user)
+    now = datetime.now(timezone.utc).isoformat()
+    nomes = [n.strip() for n in body.nomes if n and n.strip()]
+    if not nomes:
+        return {"inserted": 0, "alunos": []}
+    docs = [
+        {"id": str(uuid.uuid4()), "turma_id": turma_id, "nome": n, "created_at": now}
+        for n in nomes
+    ]
+    await db.alunos.insert_many([dict(d) for d in docs])
+    return {"inserted": len(docs), "alunos": docs}
+
 
 @api.delete("/alunos/{aluno_id}")
 async def delete_aluno(aluno_id: str, user: dict = Depends(require_teacher)):

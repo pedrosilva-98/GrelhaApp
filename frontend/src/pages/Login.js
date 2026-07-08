@@ -94,6 +94,17 @@ export default function Login() {
                             {busy ? "A entrar..." : "Entrar"}
                         </button>
 
+                        <div className="text-xs text-brand-charcoal/60 pt-1">
+                            <button
+                                type="button"
+                                data-testid="forgot-pw-link"
+                                onClick={() => alert("Esqueceu-se da palavra-passe?\n\nContacte o administrador do agrupamento para redefinir o seu acesso.\n\nO(A) administrador(a) pode gerar uma nova palavra-passe no painel de administração.")}
+                                className="hover:text-brand-charcoal underline underline-offset-2"
+                            >
+                                Esqueci-me da palavra-passe
+                            </button>
+                        </div>
+
                         <div className="text-xs text-brand-charcoal/50 pt-2 leading-relaxed">
                             Não tem conta? Contacte o <strong className="text-brand-charcoal">administrador</strong> do agrupamento para lhe criar acesso.
                         </div>
