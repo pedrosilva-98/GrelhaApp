@@ -1,0 +1,53 @@
+{
+  "summary": "First-finish smoke test. Backend auth/roles/CRUD largely work. One HIGH bug: POST /api/admin/teachers returns 500 due to Mongo ObjectId serialization even though the teacher is created — this blocks the frontend admin 'Criar professor' flow (modal never closes; visible 500 error banner; new teacher not shown). Frontend login (admin/teacher), wrong-password error, modal open, and route protection all work.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login admin@escola.pt/admin123 → 200 with access_token + role=admin",
+    "POST /api/auth/login wrong password → 401",
+    "GET /api/auth/me with Bearer → returns user",
+    "Admin creates teacher (row persists in DB and appears on reload) — but response fails (see failed)",
+    "POST /api/admin/teachers duplicate email → 400",
+    "GET /api/admin/teachers → 200 list",
+    "DELETE /api/admin/teachers/{id} → 200 (cascade OK)",
+    "Admin cannot GET /api/alunos → 403",
+    "Teacher cannot GET /api/admin/teachers → 403",
+    "GET /api/ponderacoes → defaults {CP:50,RRP:25,CM:10,ER:15}",
+    "PUT /api/ponderacoes sum!=100 → 400; sum==100 → 200",
+    "POST/GET/DELETE /api/alunos (teacher) → 200",
+    "POST /api/instrumentos with questoes → 200 (field name is 'dom', not 'dominio' as per spec)",
+    "PUT /api/instrumentos/{id}/notas → 200",
+    "DELETE /api/instrumentos/{id} → 200",
+    "Frontend /login: admin login redirects to /admin",
+    "Frontend /login: wrong password shows 'Credenciais inválidas' error",
+    "Frontend /admin: admin-add-teacher-btn opens new-teacher-form modal",
+    "Frontend testids present: teacher-nome, teacher-email, teacher-password, teacher-disciplina, teacher-ano, teacher-turma"
+  ],
+  "failed": [
+    {
+      "area": "backend/admin",
+      "issue": "POST /api/admin/teachers returns 500 Internal Server Error while still creating the record. Backend log: ValueError: [TypeError(\"'ObjectId' object is not iterable\"), TypeError('vars() argument must have __dict__ attribute')] in fastapi jsonable_encoder → serialize_response. Root cause is the returned Mongo document containing '_id' ObjectId being sent back without projection/model_dump.",
+      "evidence": "curl POST /api/admin/teachers → HTTP 500 body 'Internal Server Error'; subsequent GET list shows the created teacher; backend supervisor log shows the traceback.",
+      "priority": "HIGH"
+    },
+    {
+      "area": "frontend/admin",
+      "issue": "Create-teacher modal never closes and admin list is not refreshed because the api.post('/admin/teachers') call throws on 500. A red error banner is shown ('Requisição falhou com o código 500') and the created teacher is not visible. This blocks the entire admin → teacher onboarding UX even though the DB write succeeded.",
+      "evidence": "Playwright: after filling teacher-nome/email/password and clicking 'Criar conta', modal_open=True, new email not in body; screenshot shows error banner.",
+      "priority": "HIGH"
+    },
+    {
+      "area": "spec/backend",
+      "issue": "Instrumento question schema uses field 'dom' (not 'dominio' as stated in the review request). Not a bug per se — code and frontend use 'dom' — but spec/test request is inconsistent. Frontend Instrumentos section likely uses q-dom-N which matches 'dom'.",
+      "evidence": "POST /api/instrumentos with 'dominio' → 422 missing 'dom'; with 'dom' → 200.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "Fix POST /api/admin/teachers response serialization in /app/backend/server.py — return a Pydantic model (e.g., UserOut) or strip _id before returning. Same pattern should be reviewed for any other endpoint returning raw Mongo docs.",
+    "After fixing, re-verify admin 'Criar professor' UI flow end-to-end: modal closes, list refreshes, and just-created credentials popup appears.",
+    "Clarify docs/spec: instrument question field is 'dom' (backend + frontend). Update review spec accordingly."
+  ],
+  "success_rate": {"backend": "~93% (14/15 checks)", "frontend": "~75% (auth+navigation OK; teacher-create UI blocked by 500)"},
+  "retest_needed": true,
+  "full_testing_deferred": true
+}
