@@ -9,9 +9,7 @@ export default function Admin() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [error, setError] = useState("");
-    const [form, setForm] = useState({
-        nome: "", email: "", password: "", disciplina: "Matemática", ano: "6º", turma: "A",
-    });
+    const [form, setForm] = useState({ nome: "", email: "", password: "" });
     const [creating, setCreating] = useState(false);
     const [justCreated, setJustCreated] = useState(null);
 
@@ -34,7 +32,7 @@ export default function Admin() {
         try {
             await api.post("/admin/teachers", form);
             setJustCreated({ email: form.email, password: form.password });
-            setForm({ nome: "", email: "", password: "", disciplina: "Matemática", ano: "6º", turma: "A" });
+            setForm({ nome: "", email: "", password: "" });
             setShowModal(false);
             await load();
         } catch (e) {
@@ -56,7 +54,6 @@ export default function Admin() {
 
     return (
         <div className="min-h-screen">
-            {/* Header */}
             <header className="border-b border-crisp bg-surface">
                 <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -81,12 +78,12 @@ export default function Admin() {
             </header>
 
             <main className="max-w-6xl mx-auto px-6 sm:px-10 py-10">
-                <div className="flex items-end justify-between mb-8">
+                <div className="flex items-end justify-between mb-8 gap-4 flex-wrap">
                     <div>
                         <div className="text-xs uppercase tracking-[0.25em] text-brand-sage mb-2">Contas de acesso</div>
                         <h1 className="font-serif text-4xl text-brand-forest">Professores</h1>
                         <p className="text-brand-charcoal/70 mt-2 text-sm max-w-xl">
-                            Crie e faça a gestão das contas de professores. Cada professor apenas verá os seus alunos, instrumentos e ponderações.
+                            Crie e faça a gestão das contas de professores. Cada docente irá criar e gerir as suas próprias turmas, disciplinas e anos após o primeiro acesso.
                         </p>
                     </div>
                     <button
@@ -123,16 +120,15 @@ export default function Admin() {
                             <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
                                 <th className="px-5 py-3 font-semibold">Nome</th>
                                 <th className="px-5 py-3 font-semibold">Email</th>
-                                <th className="px-5 py-3 font-semibold">Disciplina</th>
-                                <th className="px-5 py-3 font-semibold">Turma</th>
+                                <th className="px-5 py-3 font-semibold">Criado a</th>
                                 <th className="px-5 py-3 font-semibold w-16"></th>
                             </tr>
                         </thead>
                         <tbody data-testid="teachers-list">
                             {loading ? (
-                                <tr><td colSpan={5} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
+                                <tr><td colSpan={4} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
                             ) : teachers.length === 0 ? (
-                                <tr><td colSpan={5} className="px-5 py-16 text-center text-brand-sage">
+                                <tr><td colSpan={4} className="px-5 py-16 text-center text-brand-sage">
                                     <GraduationCap className="mx-auto mb-3 opacity-40" size={32} />
                                     Ainda não criou nenhuma conta de professor.
                                 </td></tr>
@@ -140,8 +136,9 @@ export default function Admin() {
                                 <tr key={t.id} className="border-b border-crisp last:border-0 row-hover">
                                     <td className="px-5 py-3 font-medium text-brand-charcoal">{t.nome}</td>
                                     <td className="px-5 py-3 font-mono text-xs text-brand-charcoal/80">{t.email}</td>
-                                    <td className="px-5 py-3 text-brand-charcoal/80">{t.disciplina}</td>
-                                    <td className="px-5 py-3 text-brand-charcoal/80">{t.ano} {t.turma}</td>
+                                    <td className="px-5 py-3 text-brand-charcoal/60 text-xs">
+                                        {t.created_at ? new Date(t.created_at).toLocaleDateString("pt-PT") : "—"}
+                                    </td>
                                     <td className="px-5 py-3 text-right">
                                         <button
                                             data-testid={`delete-teacher-${t.id}`}
@@ -159,40 +156,26 @@ export default function Admin() {
                 </div>
             </main>
 
-            {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-                    <div className="card-surface w-full max-w-lg p-8 anim-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="card-surface w-full max-w-md p-8 anim-in" onClick={(e) => e.stopPropagation()}>
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-2">Nova conta</div>
                         <h2 className="font-serif text-2xl text-brand-forest mb-6">Criar professor</h2>
+                        <p className="text-xs text-brand-charcoal/60 mb-6 -mt-3">
+                            O(A) docente irá depois criar as suas próprias turmas dentro da app.
+                        </p>
                         <form onSubmit={submit} className="space-y-4" data-testid="new-teacher-form">
                             <div>
                                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Nome</label>
                                 <input required data-testid="teacher-nome" className="input-forest" value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} placeholder="Ex: Joana Silva" />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Email</label>
-                                    <input required type="email" data-testid="teacher-email" className="input-forest" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="joana@escola.pt" />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Palavra-passe</label>
-                                    <input required minLength={4} data-testid="teacher-password" className="input-forest" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Mínimo 4 caracteres" />
-                                </div>
+                            <div>
+                                <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Email</label>
+                                <input required type="email" data-testid="teacher-email" className="input-forest" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="joana@escola.pt" />
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Disciplina</label>
-                                    <input required data-testid="teacher-disciplina" className="input-forest" value={form.disciplina} onChange={(e) => setForm((f) => ({ ...f, disciplina: e.target.value }))} />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Ano</label>
-                                    <input required data-testid="teacher-ano" className="input-forest" value={form.ano} onChange={(e) => setForm((f) => ({ ...f, ano: e.target.value }))} />
-                                </div>
-                                <div>
-                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Turma</label>
-                                    <input required data-testid="teacher-turma" className="input-forest" value={form.turma} onChange={(e) => setForm((f) => ({ ...f, turma: e.target.value }))} />
-                                </div>
+                            <div>
+                                <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Palavra-passe</label>
+                                <input required minLength={4} data-testid="teacher-password" className="input-forest" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Mínimo 4 caracteres" />
                             </div>
                             <div className="flex gap-3 pt-3">
                                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center">Cancelar</button>

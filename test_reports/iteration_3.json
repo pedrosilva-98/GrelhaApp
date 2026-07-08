@@ -1,0 +1,30 @@
+{
+  "summary": "Full e2e retest of multi-turma refactor. Backend: 13/13 pytest tests pass (admin teacher create with only email/password/nome, duplicate 400, turmas CRUD + cascade delete + auto-seeded ponderacoes, scoped alunos/instrumentos/notas/ponderacoes with turma_id, missing param→422, unknown/other-teacher turma_id→404, ponderacoes sum!=100→400, admin→teacher endpoints 403). Frontend: admin form correctly shows only 3 fields (nome/email/password); teacher first-login empty state renders; TurmaFormModal creates first turma and header updates; picker-new-turma creates second turma; switching via pick-turma-{id} works; adding aluno in turma A does NOT appear in turma B (data isolation confirmed); instrumento create form has testids inst-nome/inst-tipo/inst-data/inst-save; notas/config/dashboard tabs render; export-pdf-btn downloads 'grelha_A_Matemática_08-07-2026.pdf'; picker-del-turma cascades and empty state returns.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_grelha_api.py",
+    "/app/test_reports/pytest/results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has no response_model on POST endpoints; relies on manual _id pop + dict filtering — refactor to Pydantic response models to prevent future field leaks.",
+    "CORS allow_origins=['*'] with allow_credentials=True is invalid per spec — currently works only because frontend uses Bearer tokens, not cookies.",
+    "Ponderacoes sum validation uses body.CP+RRP+CM+ER != 100 but ints — no float tolerance needed; OK.",
+    "Instrumento delete does not clean up per-aluno notas (they are stored inside the instrumento doc, so cascade is implicit via delete_one — fine).",
+    "get_turma_or_404 returns 404 for cross-teacher access — semantically arguable (should be 403), but avoids leaking existence; acceptable choice."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_grelha_api.py"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all critical multi-turma flows)"},
+  "test_credentials": "admin@escola.pt / admin123 (seeded). Test teacher prof@teste.pt/prof12345 created & deleted during test; all TEST_ prefixed backend fixture teachers also deleted.",
+  "seed_data_creation": "All created teachers and their cascaded turmas/alunos/instrumentos/ponderacoes cleaned up. Verified via GET /api/admin/teachers → [].",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Multi-turma refactor fully working. Backend tests must be run with -o addopts='' because pytest-xdist parallel workers don't share module-scoped fixture state (tests share a teacher_creds fixture across tests). If more scoped resources are added, keep them self-contained OR keep pytest-xdist disabled. PDF filename format: grelha_{turma_letra}_{disciplina}_{date}.pdf."
+}

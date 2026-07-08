@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Dashboard from "@/pages/sections/Dashboard";
@@ -6,8 +6,10 @@ import Turma from "@/pages/sections/Turma";
 import Instrumentos from "@/pages/sections/Instrumentos";
 import LancarNotas from "@/pages/sections/LancarNotas";
 import Config from "@/pages/sections/Config";
+import TurmaFormModal from "@/components/TurmaFormModal";
+import TurmasEmpty from "@/components/TurmasEmpty";
 import { exportGrelhaPDF } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -17,22 +19,59 @@ const TABS = [
     { id: "config", label: "Configurar", icon: Settings },
 ];
 
+const LS_TURMA_KEY = "grelha_active_turma";
+
 export default function Teacher() {
     const { user, logout } = useAuth();
     const [tab, setTab] = useState("dashboard");
+
+    const [turmas, setTurmas] = useState([]);
+    const [turmaId, setTurmaId] = useState(() => localStorage.getItem(LS_TURMA_KEY) || null);
+    const [showTurmaModal, setShowTurmaModal] = useState(false);
+    const [showTurmaPicker, setShowTurmaPicker] = useState(false);
+
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
     const [ponderacoes, setPonderacoes] = useState({ CP: 50, RRP: 25, CM: 10, ER: 15 });
-    const [loading, setLoading] = useState(true);
+
+    const [loadingTurmas, setLoadingTurmas] = useState(true);
+    const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState("");
 
-    async function loadAll() {
-        setLoading(true);
+    const turmaAtiva = useMemo(() => turmas.find((t) => t.id === turmaId), [turmas, turmaId]);
+
+    async function loadTurmas() {
+        setLoadingTurmas(true);
+        try {
+            const r = await api.get("/turmas");
+            setTurmas(r.data);
+            // Pick first if none saved or saved is invalid
+            const saved = localStorage.getItem(LS_TURMA_KEY);
+            const validSaved = r.data.find((t) => t.id === saved);
+            if (validSaved) setTurmaId(validSaved.id);
+            else if (r.data.length > 0) {
+                setTurmaId(r.data[0].id);
+                localStorage.setItem(LS_TURMA_KEY, r.data[0].id);
+            } else {
+                setTurmaId(null);
+                localStorage.removeItem(LS_TURMA_KEY);
+            }
+        } catch (e) {
+            setError(formatApiError(e));
+        } finally {
+            setLoadingTurmas(false);
+        }
+    }
+    useEffect(() => { loadTurmas(); }, []);
+
+    async function loadTurmaData(id) {
+        setLoadingData(true);
+        setError("");
         try {
             const [a, i, p] = await Promise.all([
-                api.get("/alunos"),
-                api.get("/instrumentos"),
-                api.get("/ponderacoes"),
+                api.get("/alunos", { params: { turma_id: id } }),
+                api.get("/instrumentos", { params: { turma_id: id } }),
+                api.get("/ponderacoes", { params: { turma_id: id } }),
             ]);
             setAlunos(a.data);
             setInsts(i.data);
@@ -40,25 +79,47 @@ export default function Teacher() {
         } catch (e) {
             setError(formatApiError(e));
         } finally {
-            setLoading(false);
+            setLoadingData(false);
         }
     }
-    useEffect(() => { loadAll(); }, []);
+    useEffect(() => {
+        if (turmaId) {
+            localStorage.setItem(LS_TURMA_KEY, turmaId);
+            loadTurmaData(turmaId);
+        } else {
+            setAlunos([]); setInsts([]);
+        }
+    }, [turmaId]);
+
+    async function createTurma(payload) {
+        const { data } = await api.post("/turmas", payload);
+        setTurmas((s) => [...s, data]);
+        setTurmaId(data.id);
+        setShowTurmaModal(false);
+    }
+
+    async function deleteTurma() {
+        if (!turmaAtiva) return;
+        if (!window.confirm(`Eliminar a turma "${turmaAtiva.nome}" e todos os seus alunos, instrumentos e notas? Esta ação é irreversível.`)) return;
+        await api.delete(`/turmas/${turmaAtiva.id}`);
+        const remaining = turmas.filter((t) => t.id !== turmaAtiva.id);
+        setTurmas(remaining);
+        setTurmaId(remaining[0]?.id || null);
+    }
 
     async function addAluno(nome) {
-        const { data } = await api.post("/alunos", { nome });
+        const { data } = await api.post("/alunos", { nome }, { params: { turma_id: turmaId } });
         setAlunos((s) => [...s, data]);
     }
     async function delAluno(id) {
         if (!window.confirm("Eliminar aluno?")) return;
         await api.delete(`/alunos/${id}`);
         setAlunos((s) => s.filter((a) => a.id !== id));
-        // Refresh instrumentos (notas may have been trimmed server-side)
-        const r = await api.get("/instrumentos");
+        const r = await api.get("/instrumentos", { params: { turma_id: turmaId } });
         setInsts(r.data);
     }
     async function addInstrumento(payload) {
-        const { data } = await api.post("/instrumentos", payload);
+        const { data } = await api.post("/instrumentos", payload, { params: { turma_id: turmaId } });
         setInsts((s) => [...s, data]);
     }
     async function delInstrumento(id) {
@@ -71,33 +132,107 @@ export default function Teacher() {
         setInsts((s) => s.map((i) => (i.id === instId ? { ...i, notas: notasMap } : i)));
     }
     async function savePonderacoes(vals) {
-        const { data } = await api.put("/ponderacoes", vals);
+        const { data } = await api.put("/ponderacoes", vals, { params: { turma_id: turmaId } });
         setPonderacoes(data);
     }
 
     function onExport() {
-        exportGrelhaPDF({ user, alunos, insts, ponderacoes });
+        if (!turmaAtiva) return;
+        exportGrelhaPDF({
+            user: { ...user, ...turmaAtiva },
+            alunos, insts, ponderacoes,
+        });
+    }
+
+    // Empty state — no turma yet
+    if (!loadingTurmas && turmas.length === 0) {
+        return (
+            <div className="min-h-screen">
+                <SimpleHeader user={user} onLogout={logout} />
+                <TurmasEmpty onCreate={() => setShowTurmaModal(true)} />
+                {showTurmaModal && (
+                    <TurmaFormModal
+                        onClose={() => setShowTurmaModal(false)}
+                        onSubmit={createTurma}
+                    />
+                )}
+            </div>
+        );
     }
 
     return (
         <div className="min-h-screen">
-            {/* Header */}
             <header className="bg-surface border-b border-crisp">
                 <div className="max-w-6xl mx-auto px-6 sm:px-10 pt-5 pb-4">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-md bg-brand-forest flex items-center justify-center">
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-md bg-brand-forest flex items-center justify-center flex-shrink-0">
                                 <span className="text-page font-serif text-xl leading-none">G</span>
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Agrupamento · 2025/2026</div>
-                                <div className="font-serif text-2xl text-brand-forest leading-tight">
-                                    {user?.disciplina} · {user?.ano} {user?.turma}
+                                {/* Turma picker */}
+                                <div className="relative inline-block">
+                                    <button
+                                        data-testid="turma-picker-btn"
+                                        onClick={() => setShowTurmaPicker((v) => !v)}
+                                        className="flex items-center gap-2 group -ml-1 px-1 py-0.5 rounded-md hover:bg-page transition-colors duration-200"
+                                    >
+                                        <span className="font-serif text-2xl text-brand-forest leading-tight">
+                                            {turmaAtiva ? `${turmaAtiva.disciplina} · ${turmaAtiva.ano} ${turmaAtiva.turma}` : "Selecionar turma"}
+                                        </span>
+                                        <ChevronDown size={16} className="text-brand-sage group-hover:text-brand-charcoal transition-colors" />
+                                    </button>
+                                    {turmaAtiva && (
+                                        <div className="text-xs text-brand-charcoal/60 mt-0.5 ml-1">{turmaAtiva.nome}</div>
+                                    )}
+                                    {showTurmaPicker && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setShowTurmaPicker(false)} />
+                                            <div className="absolute left-0 top-full mt-1 z-50 card-surface shadow-lg min-w-[260px] overflow-hidden" data-testid="turma-picker-menu">
+                                                <div className="text-[10px] uppercase tracking-[0.2em] text-brand-sage px-4 pt-3 pb-1">Minhas turmas</div>
+                                                {turmas.map((t) => {
+                                                    const active = t.id === turmaId;
+                                                    return (
+                                                        <button
+                                                            key={t.id}
+                                                            data-testid={`pick-turma-${t.id}`}
+                                                            onClick={() => { setTurmaId(t.id); setShowTurmaPicker(false); }}
+                                                            className={`w-full text-left px-4 py-2.5 hover:bg-page transition-colors duration-150 flex items-baseline justify-between gap-4 ${active ? "bg-page" : ""}`}
+                                                        >
+                                                            <div>
+                                                                <div className="font-medium text-brand-charcoal text-sm">{t.nome}</div>
+                                                                <div className="text-[11px] text-brand-charcoal/60">{t.disciplina} · {t.ano} {t.turma}</div>
+                                                            </div>
+                                                            {active && <span className="text-[10px] text-brand-forest uppercase tracking-wider">Atual</span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                                <div className="divider-dashed" />
+                                                <button
+                                                    data-testid="picker-new-turma"
+                                                    onClick={() => { setShowTurmaPicker(false); setShowTurmaModal(true); }}
+                                                    className="w-full text-left px-4 py-2.5 text-sm text-brand-forest hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                                >
+                                                    <Plus size={14} /> Nova turma
+                                                </button>
+                                                {turmaAtiva && (
+                                                    <button
+                                                        data-testid="picker-del-turma"
+                                                        onClick={() => { setShowTurmaPicker(false); deleteTurma(); }}
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
+                                                    >
+                                                        <Trash2 size={14} /> Eliminar turma atual
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button data-testid="export-pdf-btn" onClick={onExport} className="btn-ghost">
+                            <button data-testid="export-pdf-btn" onClick={onExport} disabled={!turmaAtiva} className="btn-ghost">
                                 <Download size={15} /> Exportar PDF
                             </button>
                             <div className="text-right hidden sm:block">
@@ -110,7 +245,6 @@ export default function Teacher() {
                         </div>
                     </div>
 
-                    {/* Tabs */}
                     <nav className="flex gap-1 mt-6 -mb-4 overflow-x-auto" role="tablist">
                         {TABS.map((t) => {
                             const Icon = t.icon;
@@ -141,7 +275,7 @@ export default function Teacher() {
                 {error && (
                     <div className="mb-4 text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>
                 )}
-                {loading ? (
+                {loadingData || loadingTurmas ? (
                     <div className="text-center text-brand-sage py-24">A carregar...</div>
                 ) : (
                     <>
@@ -153,6 +287,34 @@ export default function Teacher() {
                     </>
                 )}
             </main>
+
+            {showTurmaModal && (
+                <TurmaFormModal
+                    onClose={() => setShowTurmaModal(false)}
+                    onSubmit={createTurma}
+                />
+            )}
         </div>
+    );
+}
+
+function SimpleHeader({ user, onLogout }) {
+    return (
+        <header className="bg-surface border-b border-crisp">
+            <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-md bg-brand-forest flex items-center justify-center">
+                        <span className="text-page font-serif text-xl">G</span>
+                    </div>
+                    <div>
+                        <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Bem-vindo(a)</div>
+                        <div className="font-serif text-xl text-brand-forest">{user?.nome}</div>
+                    </div>
+                </div>
+                <button data-testid="logout-btn" onClick={onLogout} className="btn-ghost">
+                    <LogOut size={15} /> Sair
+                </button>
+            </div>
+        </header>
     );
 }
