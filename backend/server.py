@@ -15,7 +15,7 @@ from typing import List, Optional, Dict
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 # ─── DB ───────────────────────────────────────────────────────────────────────
 mongo_url = os.environ['MONGO_URL']
@@ -25,6 +25,13 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGO = "HS256"
 ACCESS_MIN = 60 * 24 * 7
+
+DEFAULT_DOMINIOS = [
+    {"code": "CP", "nome": "Conceitos e Procedimentos", "peso": 50},
+    {"code": "RRP", "nome": "Raciocínio e Resolução de Problemas", "peso": 25},
+    {"code": "CM", "nome": "Comunicação Matemática", "peso": 10},
+    {"code": "ER", "nome": "Ético-Relacional", "peso": 15},
+]
 
 app = FastAPI(title="Grelhas de Avaliação API")
 api = APIRouter(prefix="/api")
@@ -53,9 +60,7 @@ def verify_password(pw: str, hashed: str) -> bool:
 
 def create_token(user_id: str, email: str, role: str) -> str:
     payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
+        "sub": user_id, "email": email, "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_MIN),
         "type": "access",
     }
@@ -95,6 +100,8 @@ async def get_turma_or_404(turma_id: str, user: dict) -> dict:
     t = await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Turma não encontrada")
+    if "dominios" not in t or not t["dominios"]:
+        t["dominios"] = [dict(d) for d in DEFAULT_DOMINIOS]
     return t
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -109,16 +116,22 @@ class TeacherCreate(BaseModel):
     nome: str
 
 class TurmaCreate(BaseModel):
-    nome: str
     disciplina: str
     ano: str
     turma: str
 
 class TurmaUpdate(BaseModel):
-    nome: Optional[str] = None
     disciplina: Optional[str] = None
     ano: Optional[str] = None
     turma: Optional[str] = None
+
+class DominioItem(BaseModel):
+    code: str
+    nome: str
+    peso: int = Field(ge=0, le=100)
+
+class DominiosUpdate(BaseModel):
+    dominios: List[DominioItem]
 
 class AlunoIn(BaseModel):
     nome: str
@@ -134,14 +147,14 @@ class InstrumentoIn(BaseModel):
     data: str = ""
     questoes: List[Questao]
 
+class InstrumentoUpdate(BaseModel):
+    nome: Optional[str] = None
+    tipo: Optional[str] = None
+    data: Optional[str] = None
+    questoes: Optional[List[Questao]] = None
+
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
-
-class Ponderacoes(BaseModel):
-    CP: int
-    RRP: int
-    CM: int
-    ER: int
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +208,6 @@ async def delete_teacher(teacher_id: str, _: dict = Depends(require_admin)):
     if turma_ids:
         await db.alunos.delete_many({"turma_id": {"$in": turma_ids}})
         await db.instrumentos.delete_many({"turma_id": {"$in": turma_ids}})
-        await db.ponderacoes.delete_many({"turma_id": {"$in": turma_ids}})
     await db.turmas.delete_many({"prof_id": teacher_id})
     return {"ok": True}
 
@@ -203,27 +215,25 @@ async def delete_teacher(teacher_id: str, _: dict = Depends(require_admin)):
 
 @api.get("/turmas")
 async def list_turmas(user: dict = Depends(require_teacher)):
-    return await db.turmas.find({"prof_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+    docs = await db.turmas.find({"prof_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+    for d in docs:
+        if "dominios" not in d or not d["dominios"]:
+            d["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
+    return docs
 
 @api.post("/turmas")
 async def create_turma(body: TurmaCreate, user: dict = Depends(require_teacher)):
     doc = {
         "id": str(uuid.uuid4()),
         "prof_id": user["id"],
-        "nome": body.nome.strip(),
         "disciplina": body.disciplina.strip(),
         "ano": body.ano.strip(),
         "turma": body.turma.strip(),
+        "dominios": [dict(d) for d in DEFAULT_DOMINIOS],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.turmas.insert_one(doc)
     doc.pop("_id", None)
-    # Seed ponderacoes defaults for this turma
-    await db.ponderacoes.update_one(
-        {"turma_id": doc["id"]},
-        {"$set": {"turma_id": doc["id"], "CP": 50, "RRP": 25, "CM": 10, "ER": 15}},
-        upsert=True,
-    )
     return doc
 
 @api.put("/turmas/{turma_id}")
@@ -234,16 +244,51 @@ async def update_turma(turma_id: str, body: TurmaUpdate, user: dict = Depends(re
         await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": updates})
     return await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
 
+@api.put("/turmas/{turma_id}/dominios")
+async def update_dominios(turma_id: str, body: DominiosUpdate, user: dict = Depends(require_teacher)):
+    turma = await get_turma_or_404(turma_id, user)
+    if not body.dominios:
+        raise HTTPException(status_code=400, detail="Deve existir pelo menos um domínio")
+    total = sum(int(d.peso) for d in body.dominios)
+    if total != 100:
+        raise HTTPException(status_code=400, detail=f"A soma das ponderações deve ser 100% (atual: {total}%)")
+    # Unique codes
+    codes = [d.code.strip() for d in body.dominios]
+    if any(not c for c in codes):
+        raise HTTPException(status_code=400, detail="Cada domínio precisa de um código")
+    if len(set(codes)) != len(codes):
+        raise HTTPException(status_code=400, detail="Códigos de domínio duplicados")
+    # Prevent removing a domain still referenced by any instrumento questão
+    new_codes = set(codes)
+    old_codes = {d["code"] for d in (turma.get("dominios") or [])}
+    removed = old_codes - new_codes
+    if removed:
+        insts = await db.instrumentos.find(
+            {"turma_id": turma_id, "questoes.dom": {"$in": list(removed)}},
+            {"_id": 0, "nome": 1},
+        ).to_list(1000)
+        if insts:
+            names = ", ".join(i.get("nome", "?") for i in insts[:3])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Não é possível remover domínios ainda usados em instrumentos ({names}). Edite ou elimine esses instrumentos primeiro.",
+            )
+    new_dominios = [{"code": d.code.strip(), "nome": d.nome.strip(), "peso": int(d.peso)} for d in body.dominios]
+    await db.turmas.update_one(
+        {"id": turma_id, "prof_id": user["id"]},
+        {"$set": {"dominios": new_dominios}},
+    )
+    return {"dominios": new_dominios}
+
 @api.delete("/turmas/{turma_id}")
 async def delete_turma(turma_id: str, user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
     await db.alunos.delete_many({"turma_id": turma_id})
     await db.instrumentos.delete_many({"turma_id": turma_id})
-    await db.ponderacoes.delete_many({"turma_id": turma_id})
     await db.turmas.delete_one({"id": turma_id, "prof_id": user["id"]})
     return {"ok": True}
 
-# ─── Alunos (per turma) ───────────────────────────────────────────────────────
+# ─── Alunos ───────────────────────────────────────────────────────────────────
 
 @api.get("/alunos")
 async def get_alunos(turma_id: str = Query(...), user: dict = Depends(require_teacher)):
@@ -276,7 +321,7 @@ async def delete_aluno(aluno_id: str, user: dict = Depends(require_teacher)):
     )
     return {"ok": True}
 
-# ─── Instrumentos (per turma) ─────────────────────────────────────────────────
+# ─── Instrumentos ─────────────────────────────────────────────────────────────
 
 @api.get("/instrumentos")
 async def get_instrumentos(turma_id: str = Query(...), user: dict = Depends(require_teacher)):
@@ -285,7 +330,11 @@ async def get_instrumentos(turma_id: str = Query(...), user: dict = Depends(requ
 
 @api.post("/instrumentos")
 async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
-    await get_turma_or_404(turma_id, user)
+    turma = await get_turma_or_404(turma_id, user)
+    valid_codes = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+    for q in body.questoes:
+        if q.dom not in valid_codes:
+            raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
     doc = {
         "id": str(uuid.uuid4()),
         "turma_id": turma_id,
@@ -299,6 +348,38 @@ async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user:
     await db.instrumentos.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+@api.put("/instrumentos/{inst_id}")
+async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict = Depends(require_teacher)):
+    inst = await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instrumento não encontrado")
+    turma = await get_turma_or_404(inst["turma_id"], user)
+    updates = {}
+    if body.nome is not None:
+        updates["nome"] = body.nome.strip()
+    if body.tipo is not None:
+        updates["tipo"] = body.tipo
+    if body.data is not None:
+        updates["data"] = body.data
+    if body.questoes is not None:
+        valid_codes = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+        for q in body.questoes:
+            if q.dom not in valid_codes:
+                raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
+        new_q_ids = {q.id for q in body.questoes}
+        updates["questoes"] = [q.model_dump() for q in body.questoes]
+        # Trim notas: keep only entries with q_id in new_q_ids
+        existing_notas = inst.get("notas") or {}
+        cleaned = {}
+        for aid, m in existing_notas.items():
+            filt = {k: v for k, v in m.items() if k in new_q_ids}
+            if filt:
+                cleaned[aid] = filt
+        updates["notas"] = cleaned
+    if updates:
+        await db.instrumentos.update_one({"id": inst_id}, {"$set": updates})
+    return await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})
 
 @api.put("/instrumentos/{inst_id}/notas")
 async def update_notas(inst_id: str, body: NotasUpdate, user: dict = Depends(require_teacher)):
@@ -318,30 +399,6 @@ async def delete_instrumento(inst_id: str, user: dict = Depends(require_teacher)
     await db.instrumentos.delete_one({"id": inst_id})
     return {"ok": True}
 
-# ─── Ponderacoes (per turma) ──────────────────────────────────────────────────
-
-@api.get("/ponderacoes")
-async def get_pond(turma_id: str = Query(...), user: dict = Depends(require_teacher)):
-    await get_turma_or_404(turma_id, user)
-    doc = await db.ponderacoes.find_one({"turma_id": turma_id}, {"_id": 0})
-    if not doc:
-        doc = {"turma_id": turma_id, "CP": 50, "RRP": 25, "CM": 10, "ER": 15}
-        await db.ponderacoes.insert_one(doc.copy())
-    return {"CP": doc["CP"], "RRP": doc["RRP"], "CM": doc["CM"], "ER": doc["ER"]}
-
-@api.put("/ponderacoes")
-async def set_pond(body: Ponderacoes, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
-    await get_turma_or_404(turma_id, user)
-    total = body.CP + body.RRP + body.CM + body.ER
-    if total != 100:
-        raise HTTPException(status_code=400, detail="A soma das ponderações deve ser 100%")
-    await db.ponderacoes.update_one(
-        {"turma_id": turma_id},
-        {"$set": {**body.model_dump(), "turma_id": turma_id}},
-        upsert=True,
-    )
-    return body.model_dump()
-
 # ─── Health ───────────────────────────────────────────────────────────────────
 
 @api.get("/")
@@ -360,10 +417,14 @@ async def startup():
     await db.turmas.create_index("id", unique=True)
     await db.alunos.create_index("turma_id")
     await db.instrumentos.create_index("turma_id")
-    await db.ponderacoes.create_index("turma_id", unique=True)
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@escola.pt").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").lower().strip()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_email or not admin_password:
+        log.warning("ADMIN_EMAIL/ADMIN_PASSWORD not set — admin not seeded")
+        return
+    # Remove any other admins to keep exactly one
+    await db.users.delete_many({"role": "admin", "email": {"$ne": admin_email}})
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({
@@ -375,12 +436,13 @@ async def startup():
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         log.info(f"Seeded admin: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": hash_password(admin_password)}},
-        )
-        log.info("Admin password updated from env")
+    else:
+        if existing.get("role") != "admin" or not verify_password(admin_password, existing["password_hash"]):
+            await db.users.update_one(
+                {"email": admin_email},
+                {"$set": {"role": "admin", "password_hash": hash_password(admin_password)}},
+            )
+            log.info(f"Updated admin credentials for {admin_email}")
 
 @app.on_event("shutdown")
 async def shutdown():

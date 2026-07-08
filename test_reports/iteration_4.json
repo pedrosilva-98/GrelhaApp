@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 4 e2e test of new admin creds + editable turma dominios + instrumento edit + notas 0-10 scale. Backend: 16/16 pytest tests PASS (new admin login OK, wrong password 401, old admin@escola.pt 401, /api/ponderacoes returns 404 (removed), POST /api/turmas accepts only disciplina/ano/turma and returns 4 default dominios CP/RRP/CM/ER 50/25/10/15, extra nome field silently ignored, PUT /turmas/{id}/dominios validates sum!=100→400, duplicate codes→400, empty codes→400, allows rename+reweight, allows add/remove unreferenced dominio, blocks removing dominio referenced by instrumento with informative Portuguese error, POST /instrumentos with unknown dom→400, PUT /instrumentos/{id} updates nome+trims notas for removed questoes preserving retained q ids, cross-teacher edit→404, PUT /notas accepts any float). Frontend: admin login with passilva2005@gmail.com/!grelhaadmin2005! → /admin OK; teacher creation form has only teacher-nome/teacher-email/teacher-password; teacher login → TurmaFormModal shows only turma-disciplina/turma-ano/turma-letra (no turma-nome); header shows 'Matemática · 6º A'; Config tab shows editable dom-row-0..3 with dom-code-N/dom-nome-N/dom-peso-N sliders; renamed ER→'Atitudes' persisted after reload; added 5th domain ORG with peso via dom-add-btn and rebalanced to sum=100 → saved successfully; created instrumento with q dom=ORG; edit-inst-{id} pre-fills form with existing nome/tipo/data/questoes; rename saves and row updates; notas-help testid present with text 'Introduza as notas de 0 a 10'; nota input has max=10, entering 15 clamps to 10; nota=8 with cotacao=20 correctly shows 80.0% classif in table; export-pdf-btn present; data isolation between turmas OK (verified in prev iteration).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Config.js (Domínios)",
+        "issue": "When PUT /turmas/{id}/dominios returns 400 (e.g. removing a dominio still referenced by an instrumento), the UI shows generic 'Request failed with status code 400' instead of the backend's informative detail 'Não é possível remover domínios ainda usados em instrumentos (…). Edite ou elimine esses instrumentos primeiro.' Root cause: Config.js catch block uses e.message only; must use e?.response?.data?.detail like Instrumentos.js does (line 66). The problem statement explicitly requires that error to be shown.",
+        "selector": "dom-save-btn error message div",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "TurmasEmpty (empty state before first turma)",
+        "issues": ["Copy still mentions 'ponderações' but that concept was replaced by editable 'domínios'. Update to: 'Cada turma tem os seus próprios alunos, instrumentos de avaliação e domínios.'"]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/backend/tests/test_grelha_api.py",
+    "/app/test_reports/pytest/iteration4.xml"
+  ],
+  "action_items": [
+    "In /app/frontend/src/pages/sections/Config.js, change catch block from setError(e.message || ...) to setError(e?.response?.data?.detail || e?.message || 'Erro ao guardar.') OR update Teacher.js saveDominios to re-throw with a friendlier Error. This is required so the 'Não é possível remover…' backend message reaches the user (explicitly listed in the problem statement acceptance criteria).",
+    "Update /app/frontend/src/components/TurmasEmpty.js copy: 'ponderações' → 'domínios' since ponderacoes endpoint was removed.",
+    "(Nice-to-have) Add Pydantic extra=forbid on TurmaCreate to reject stray 'nome' field with 422 instead of silently dropping it."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_turma_or_404 mutates the returned dict to inject default DOMINIOS if missing but doesn't persist — acceptable read-time fallback for legacy turmas.",
+    "PUT /instrumentos/{id} nota-trimming logic (lines 373-379) is O(alunos*questoes) but correct; keeps only q ids present in new list — good behavior.",
+    "Config.js: peso is stored/edited as int via range slider; parseInt on save. If someone hand-crafts a payload with float peso the server will reject via Pydantic int coercion — fine.",
+    "Frontend: no debounce cap on Lançar notas debouncedSave — a rapid stream of edits will keep resetting the 600ms timer; user must pause. Acceptable UX pattern.",
+    "server.py still uses allow_origins=['*'] with allow_credentials=True — technically invalid CORS spec (browsers reject cookies) but the app uses Bearer tokens, so it works. Flagged prior iterations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~95% (all flows work; 1 UX error-message regression on remove-referenced-dominio)"},
+  "test_credentials": "Admin: passilva2005@gmail.com / !grelhaadmin2005! (working). Old admin admin@escola.pt correctly rejected. Test teacher prof@teste.pt / prof12345 was created and deleted. NOTE: /app/memory/test_credentials.md is STALE — still references old admin@escola.pt/admin123; recommend updating.",
+  "seed_data_creation": "Created & cleaned up: test teacher prof@teste.pt (with turma Matemática/6º/A, 1 aluno, 1 instrumento) and all TEST_it4_* teachers from pytest fixtures. Verified via GET /api/admin/teachers → only 1 pre-existing real teacher (miguelsf2010@gmail.com) remains.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New admin creds live in backend/.env (ADMIN_EMAIL/ADMIN_PASSWORD). Turma model: {id, prof_id, disciplina, ano, turma, dominios:[{code,nome,peso}], created_at}. PUT /turmas/{id}/dominios enforces sum=100, unique non-empty codes, and blocks removal of codes still referenced by any instrumento questão. Instrumento edit: PUT /instrumentos/{id} trims notas for removed q ids. Notas UI clamps to 0-10 via NOTA_MAX in /app/frontend/src/lib/grelha.js; classif = (nota/10 * cotacao) weighted. Only real issue: Config.js swallows axios 400 detail — fix to surface e.response.data.detail so the required 'Não é possível remover…' message is visible.",
+  "rca of the issue": "Frontend Config.js catch block uses `e.message` which for axios errors is 'Request failed with status code 400'. The backend's informative Portuguese message lives on `e.response.data.detail`. Fix (one-line): setError(e?.response?.data?.detail || e?.message || 'Erro ao guardar.'). Reproduction: create turma → Config → add ORG → create instrumento using ORG → return to Config → click X on ORG row → rebalance to 100 → click Guardar domínios → observe generic error instead of the 'Não é possível remover…' backend detail."
+}

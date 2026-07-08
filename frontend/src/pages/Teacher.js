@@ -32,21 +32,20 @@ export default function Teacher() {
 
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
-    const [ponderacoes, setPonderacoes] = useState({ CP: 50, RRP: 25, CM: 10, ER: 15 });
 
     const [loadingTurmas, setLoadingTurmas] = useState(true);
     const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState("");
 
     const turmaAtiva = useMemo(() => turmas.find((t) => t.id === turmaId), [turmas, turmaId]);
+    const dominios = turmaAtiva?.dominios || [];
 
-    async function loadTurmas() {
+    async function loadTurmas(selectId) {
         setLoadingTurmas(true);
         try {
             const r = await api.get("/turmas");
             setTurmas(r.data);
-            // Pick first if none saved or saved is invalid
-            const saved = localStorage.getItem(LS_TURMA_KEY);
+            const saved = selectId || localStorage.getItem(LS_TURMA_KEY);
             const validSaved = r.data.find((t) => t.id === saved);
             if (validSaved) setTurmaId(validSaved.id);
             else if (r.data.length > 0) {
@@ -68,14 +67,12 @@ export default function Teacher() {
         setLoadingData(true);
         setError("");
         try {
-            const [a, i, p] = await Promise.all([
+            const [a, i] = await Promise.all([
                 api.get("/alunos", { params: { turma_id: id } }),
                 api.get("/instrumentos", { params: { turma_id: id } }),
-                api.get("/ponderacoes", { params: { turma_id: id } }),
             ]);
             setAlunos(a.data);
             setInsts(i.data);
-            setPonderacoes(p.data);
         } catch (e) {
             setError(formatApiError(e));
         } finally {
@@ -100,11 +97,16 @@ export default function Teacher() {
 
     async function deleteTurma() {
         if (!turmaAtiva) return;
-        if (!window.confirm(`Eliminar a turma "${turmaAtiva.nome}" e todos os seus alunos, instrumentos e notas? Esta ação é irreversível.`)) return;
+        if (!window.confirm(`Eliminar a turma "${turmaAtiva.disciplina} ${turmaAtiva.ano}${turmaAtiva.turma}" e todos os seus alunos, instrumentos e notas? Esta ação é irreversível.`)) return;
         await api.delete(`/turmas/${turmaAtiva.id}`);
         const remaining = turmas.filter((t) => t.id !== turmaAtiva.id);
         setTurmas(remaining);
         setTurmaId(remaining[0]?.id || null);
+    }
+
+    async function saveDominios(newDominios) {
+        const { data } = await api.put(`/turmas/${turmaId}/dominios`, { dominios: newDominios });
+        setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, dominios: data.dominios } : t)));
     }
 
     async function addAluno(nome) {
@@ -122,6 +124,10 @@ export default function Teacher() {
         const { data } = await api.post("/instrumentos", payload, { params: { turma_id: turmaId } });
         setInsts((s) => [...s, data]);
     }
+    async function updateInstrumento(id, payload) {
+        const { data } = await api.put(`/instrumentos/${id}`, payload);
+        setInsts((s) => s.map((i) => (i.id === id ? data : i)));
+    }
     async function delInstrumento(id) {
         if (!window.confirm("Eliminar instrumento e todas as notas?")) return;
         await api.delete(`/instrumentos/${id}`);
@@ -131,30 +137,19 @@ export default function Teacher() {
         await api.put(`/instrumentos/${instId}/notas`, { notas: notasMap });
         setInsts((s) => s.map((i) => (i.id === instId ? { ...i, notas: notasMap } : i)));
     }
-    async function savePonderacoes(vals) {
-        const { data } = await api.put("/ponderacoes", vals, { params: { turma_id: turmaId } });
-        setPonderacoes(data);
-    }
 
     function onExport() {
         if (!turmaAtiva) return;
-        exportGrelhaPDF({
-            user: { ...user, ...turmaAtiva },
-            alunos, insts, ponderacoes,
-        });
+        exportGrelhaPDF({ user, turma: turmaAtiva, alunos, insts });
     }
 
-    // Empty state — no turma yet
     if (!loadingTurmas && turmas.length === 0) {
         return (
             <div className="min-h-screen">
                 <SimpleHeader user={user} onLogout={logout} />
                 <TurmasEmpty onCreate={() => setShowTurmaModal(true)} />
                 {showTurmaModal && (
-                    <TurmaFormModal
-                        onClose={() => setShowTurmaModal(false)}
-                        onSubmit={createTurma}
-                    />
+                    <TurmaFormModal onClose={() => setShowTurmaModal(false)} onSubmit={createTurma} />
                 )}
             </div>
         );
@@ -171,7 +166,6 @@ export default function Teacher() {
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Agrupamento · 2025/2026</div>
-                                {/* Turma picker */}
                                 <div className="relative inline-block">
                                     <button
                                         data-testid="turma-picker-btn"
@@ -183,9 +177,6 @@ export default function Teacher() {
                                         </span>
                                         <ChevronDown size={16} className="text-brand-sage group-hover:text-brand-charcoal transition-colors" />
                                     </button>
-                                    {turmaAtiva && (
-                                        <div className="text-xs text-brand-charcoal/60 mt-0.5 ml-1">{turmaAtiva.nome}</div>
-                                    )}
                                     {showTurmaPicker && (
                                         <>
                                             <div className="fixed inset-0 z-40" onClick={() => setShowTurmaPicker(false)} />
@@ -201,8 +192,8 @@ export default function Teacher() {
                                                             className={`w-full text-left px-4 py-2.5 hover:bg-page transition-colors duration-150 flex items-baseline justify-between gap-4 ${active ? "bg-page" : ""}`}
                                                         >
                                                             <div>
-                                                                <div className="font-medium text-brand-charcoal text-sm">{t.nome}</div>
-                                                                <div className="text-[11px] text-brand-charcoal/60">{t.disciplina} · {t.ano} {t.turma}</div>
+                                                                <div className="font-medium text-brand-charcoal text-sm">{t.disciplina}</div>
+                                                                <div className="text-[11px] text-brand-charcoal/60">{t.ano} {t.turma}</div>
                                                             </div>
                                                             {active && <span className="text-[10px] text-brand-forest uppercase tracking-wider">Atual</span>}
                                                         </button>
@@ -279,20 +270,17 @@ export default function Teacher() {
                     <div className="text-center text-brand-sage py-24">A carregar...</div>
                 ) : (
                     <>
-                        {tab === "dashboard" && <Dashboard alunos={alunos} insts={insts} ponderacoes={ponderacoes} />}
+                        {tab === "dashboard" && <Dashboard alunos={alunos} insts={insts} dominios={dominios} />}
                         {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} />}
-                        {tab === "instrumentos" && <Instrumentos insts={insts} addInstrumento={addInstrumento} delInstrumento={delInstrumento} />}
-                        {tab === "notas" && <LancarNotas alunos={alunos} insts={insts} saveNotas={saveNotas} />}
-                        {tab === "config" && <Config ponderacoes={ponderacoes} savePonderacoes={savePonderacoes} />}
+                        {tab === "instrumentos" && <Instrumentos insts={insts} dominios={dominios} addInstrumento={addInstrumento} updateInstrumento={updateInstrumento} delInstrumento={delInstrumento} />}
+                        {tab === "notas" && <LancarNotas alunos={alunos} insts={insts} dominios={dominios} saveNotas={saveNotas} />}
+                        {tab === "config" && <Config dominios={dominios} saveDominios={saveDominios} />}
                     </>
                 )}
             </main>
 
             {showTurmaModal && (
-                <TurmaFormModal
-                    onClose={() => setShowTurmaModal(false)}
-                    onSubmit={createTurma}
-                />
+                <TurmaFormModal onClose={() => setShowTurmaModal(false)} onSubmit={createTurma} />
             )}
         </div>
     );

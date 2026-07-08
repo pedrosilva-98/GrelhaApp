@@ -63,7 +63,7 @@ export default function Login() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="input-forest"
-                                placeholder="admin@escola.pt"
+                                placeholder="passilva2005@gmail.com"
                             />
                         </div>
                         <div>

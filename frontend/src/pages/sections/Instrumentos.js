@@ -1,44 +1,76 @@
 import { useState } from "react";
-import { Plus, X, Trash2, FilePlus } from "lucide-react";
-import { TIPOS_INSTRUMENTO, DOM_KEYS, DOMINIOS } from "@/lib/grelha";
+import { Plus, X, Trash2, FilePlus, Pencil } from "lucide-react";
+import { TIPOS_INSTRUMENTO, domColor } from "@/lib/grelha";
 
-export default function Instrumentos({ insts, addInstrumento, delInstrumento }) {
-    const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState({ nome: "", tipo: "F.Sumativa", data: "" });
-    const [questoes, setQuestoes] = useState([{ id: "q1", dom: "CP", cotacao: "" }]);
+function buildInitial(dominios) {
+    return { nome: "", tipo: "F.Sumativa", data: "", questoes: [{ id: "q1", dom: dominios[0]?.code || "", cotacao: "" }] };
+}
+
+export default function Instrumentos({ insts, dominios, addInstrumento, updateInstrumento, delInstrumento }) {
+    const [editing, setEditing] = useState(null); // null | 'new' | inst_id
+    const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
+    const [busy, setBusy] = useState(false);
 
-    function reset() {
-        setForm({ nome: "", tipo: "F.Sumativa", data: "" });
-        setQuestoes([{ id: "q1", dom: "CP", cotacao: "" }]);
+    function openNew() {
+        setForm(buildInitial(dominios));
+        setEditing("new");
         setError("");
     }
+
+    function openEdit(inst) {
+        setForm({
+            nome: inst.nome,
+            tipo: inst.tipo,
+            data: inst.data || "",
+            questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao) })),
+        });
+        setEditing(inst.id);
+        setError("");
+    }
+
+    function close() {
+        setEditing(null);
+        setForm(buildInitial(dominios));
+        setError("");
+    }
+
     function addQ() {
-        setQuestoes((qs) => [...qs, { id: "q" + (qs.length + 1), dom: "CP", cotacao: "" }]);
+        setForm((f) => ({
+            ...f,
+            questoes: [...f.questoes, { id: "q" + (f.questoes.length + 1), dom: dominios[0]?.code || "", cotacao: "" }],
+        }));
     }
     function removeQ(idx) {
-        setQuestoes((qs) => qs.filter((_, i) => i !== idx));
+        setForm((f) => ({ ...f, questoes: f.questoes.filter((_, i) => i !== idx) }));
     }
     function updateQ(idx, k, v) {
-        setQuestoes((qs) => qs.map((q, i) => (i === idx ? { ...q, [k]: v } : q)));
+        setForm((f) => ({ ...f, questoes: f.questoes.map((q, i) => (i === idx ? { ...q, [k]: v } : q)) }));
     }
+
     async function submit(e) {
         e.preventDefault();
         setError("");
         if (!form.nome.trim()) { setError("Indique um nome."); return; }
-        const qs = questoes
+        const qs = form.questoes
             .filter((q) => q.id.trim() && q.cotacao !== "" && !Number.isNaN(parseFloat(q.cotacao)))
             .map((q) => ({ id: q.id.trim(), dom: q.dom, cotacao: parseFloat(q.cotacao) }));
         if (!qs.length) { setError("Adicione pelo menos uma questão com cotação."); return; }
+        setBusy(true);
         try {
-            await addInstrumento({ ...form, questoes: qs });
-            reset();
-            setShowForm(false);
+            const payload = { nome: form.nome.trim(), tipo: form.tipo, data: form.data, questoes: qs };
+            if (editing === "new") await addInstrumento(payload);
+            else await updateInstrumento(editing, payload);
+            close();
         } catch (err) {
-            setError(err.message || "Erro ao guardar.");
+            setError(err?.response?.data?.detail || err.message || "Erro ao guardar.");
+        } finally {
+            setBusy(false);
         }
     }
-    const totalCot = questoes.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0);
+
+    const totalCot = form.questoes.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0);
+    const domByCode = Object.fromEntries(dominios.map((d, i) => [d.code, { ...d, color: domColor(i) }]));
 
     return (
         <div className="space-y-6 anim-in" data-testid="instrumentos-view">
@@ -47,21 +79,25 @@ export default function Instrumentos({ insts, addInstrumento, delInstrumento }) 
                     <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Avaliação</div>
                     <h2 className="font-serif text-xl text-brand-forest">Instrumentos</h2>
                 </div>
-                {!showForm && (
-                    <button data-testid="new-instrumento-btn" onClick={() => setShowForm(true)} className="btn-primary">
+                {!editing && (
+                    <button data-testid="new-instrumento-btn" onClick={openNew} className="btn-primary">
                         <FilePlus size={16} /> Novo instrumento
                     </button>
                 )}
             </div>
 
-            {showForm && (
+            {editing && (
                 <div className="card-surface p-6 space-y-5" data-testid="instrumento-form">
                     <div className="flex justify-between items-start">
                         <div>
-                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Criar</div>
-                            <h3 className="font-serif text-lg text-brand-forest">Novo instrumento</h3>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">
+                                {editing === "new" ? "Criar" : "Editar"}
+                            </div>
+                            <h3 className="font-serif text-lg text-brand-forest">
+                                {editing === "new" ? "Novo instrumento" : "Alterar instrumento"}
+                            </h3>
                         </div>
-                        <button onClick={() => { reset(); setShowForm(false); }} className="text-brand-sage hover:text-brand-charcoal">
+                        <button onClick={close} className="text-brand-sage hover:text-brand-charcoal">
                             <X size={18} />
                         </button>
                     </div>
@@ -88,15 +124,21 @@ export default function Instrumentos({ insts, addInstrumento, delInstrumento }) 
                             Questões · Total: <span className="text-brand-forest">{totalCot.toFixed(1)} pts</span>
                         </div>
                         <div className="space-y-2">
-                            {questoes.map((q, i) => (
+                            {form.questoes.map((q, i) => (
                                 <div key={i} className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-brand-sage w-6 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                                     <input data-testid={`q-id-${i}`} className="input-forest w-28" placeholder="ID (ex: 1.1)" value={q.id} onChange={(e) => updateQ(i, "id", e.target.value)} />
-                                    <select data-testid={`q-dom-${i}`} className="input-forest w-24" value={q.dom} onChange={(e) => updateQ(i, "dom", e.target.value)} style={{ color: DOMINIOS[q.dom]?.color }}>
-                                        {DOM_KEYS.map((d) => <option key={d} value={d}>{d}</option>)}
+                                    <select
+                                        data-testid={`q-dom-${i}`}
+                                        className="input-forest w-32"
+                                        value={q.dom}
+                                        onChange={(e) => updateQ(i, "dom", e.target.value)}
+                                        style={{ color: domByCode[q.dom]?.color }}
+                                    >
+                                        {dominios.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
                                     </select>
                                     <input data-testid={`q-cot-${i}`} type="number" step="0.1" className="input-forest w-24" placeholder="Pts" value={q.cotacao} onChange={(e) => updateQ(i, "cotacao", e.target.value)} />
-                                    <button type="button" onClick={() => removeQ(i)} className="btn-danger-ghost" disabled={questoes.length === 1}>
+                                    <button type="button" onClick={() => removeQ(i)} className="btn-danger-ghost" disabled={form.questoes.length === 1}>
                                         <X size={14} />
                                     </button>
                                 </div>
@@ -110,8 +152,10 @@ export default function Instrumentos({ insts, addInstrumento, delInstrumento }) 
                     {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
 
                     <div className="flex gap-3 pt-2">
-                        <button onClick={() => { reset(); setShowForm(false); }} className="btn-ghost">Cancelar</button>
-                        <button data-testid="inst-save" onClick={submit} className="btn-primary">Guardar instrumento</button>
+                        <button onClick={close} className="btn-ghost">Cancelar</button>
+                        <button data-testid="inst-save" onClick={submit} disabled={busy} className="btn-primary">
+                            {busy ? "A guardar..." : (editing === "new" ? "Guardar instrumento" : "Guardar alterações")}
+                        </button>
                     </div>
                 </div>
             )}
@@ -125,7 +169,7 @@ export default function Instrumentos({ insts, addInstrumento, delInstrumento }) 
                             <th className="px-5 py-2.5 font-semibold">Data</th>
                             <th className="px-5 py-2.5 font-semibold">Questões</th>
                             <th className="px-5 py-2.5 font-semibold">Total pts</th>
-                            <th className="px-5 py-2.5 font-semibold w-16"></th>
+                            <th className="px-5 py-2.5 font-semibold w-24"></th>
                         </tr>
                     </thead>
                     <tbody data-testid="instrumentos-list">
@@ -141,9 +185,14 @@ export default function Instrumentos({ insts, addInstrumento, delInstrumento }) 
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.questoes.length}</td>
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.questoes.reduce((s, q) => s + Number(q.cotacao), 0).toFixed(1)}</td>
                                 <td className="px-5 py-3 text-right">
-                                    <button data-testid={`del-inst-${inst.id}`} onClick={() => delInstrumento(inst.id)} className="btn-danger-ghost">
-                                        <Trash2 size={14} />
-                                    </button>
+                                    <div className="flex justify-end gap-1">
+                                        <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
+                                            <Pencil size={14} />
+                                        </button>
+                                        <button data-testid={`del-inst-${inst.id}`} onClick={() => delInstrumento(inst.id)} className="btn-danger-ghost" title="Eliminar">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}

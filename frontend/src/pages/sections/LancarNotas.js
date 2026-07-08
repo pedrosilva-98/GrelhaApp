@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Badge from "@/components/Badge";
-import { calcClassif, DOMINIOS } from "@/lib/grelha";
+import { calcClassif, domColor, NOTA_MAX } from "@/lib/grelha";
+import { Info } from "lucide-react";
 
-// Debounce hook for saving notas
 function useDebouncedCallback(cb, delay) {
     const t = useRef(null);
     return (...args) => {
@@ -11,7 +11,7 @@ function useDebouncedCallback(cb, delay) {
     };
 }
 
-export default function LancarNotas({ alunos, insts, saveNotas }) {
+export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
     const [instId, setInstId] = useState(insts[0]?.id || null);
 
     useEffect(() => {
@@ -32,20 +32,20 @@ export default function LancarNotas({ alunos, insts, saveNotas }) {
         setTimeout(() => setSavedFlash(false), 1200);
     }, 600);
 
-    function updateNota(alunoId, qId, value, maxCot) {
+    const domColors = Object.fromEntries(dominios.map((d, i) => [d.code, domColor(i)]));
+
+    function updateNota(alunoId, qId, value) {
         let v = value === "" ? "" : parseFloat(value);
         if (typeof v === "number" && !Number.isNaN(v)) {
             if (v < 0) v = 0;
-            if (v > maxCot) v = maxCot;
+            if (v > NOTA_MAX) v = NOTA_MAX;
         }
         const next = {
             ...notas,
             [alunoId]: { ...(notas[alunoId] || {}), [qId]: v === "" ? undefined : v },
         };
-        // clean undefined
         if (next[alunoId][qId] === undefined) delete next[alunoId][qId];
         setNotas(next);
-        // Build clean payload
         const clean = {};
         for (const [aid, nMap] of Object.entries(next)) {
             const inner = {};
@@ -69,11 +69,18 @@ export default function LancarNotas({ alunos, insts, saveNotas }) {
         );
     }
 
-    // Simulate instrument-with-current-notas for calc
     const instWithNotas = inst ? { ...inst, notas } : null;
 
     return (
         <div className="space-y-5 anim-in" data-testid="notas-view">
+            {/* Nota explicativa */}
+            <div className="flex items-start gap-3 rounded-lg border border-[#B8D4EA] bg-[#EBF4FA] px-4 py-3 text-sm text-[#2B5A84]" data-testid="notas-help">
+                <Info size={16} className="flex-shrink-0 mt-0.5" />
+                <div>
+                    <strong>Introduza as notas de 0 a 10</strong> em cada questão, independentemente da cotação (pontos). A classificação em percentagem e por domínio é calculada automaticamente, ponderando as respostas pela cotação de cada questão.
+                </div>
+            </div>
+
             <div className="flex items-center gap-3 flex-wrap">
                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage">Instrumento</label>
                 <select
@@ -101,7 +108,7 @@ export default function LancarNotas({ alunos, insts, saveNotas }) {
                                     {inst.questoes.map((q) => (
                                         <th key={q.id} className="px-2 py-2 text-center">
                                             <div className="text-[13px] font-medium text-brand-charcoal font-mono">{q.id}</div>
-                                            <div className="text-[10px] tabular-nums font-mono" style={{ color: DOMINIOS[q.dom]?.color }}>
+                                            <div className="text-[10px] tabular-nums font-mono" style={{ color: domColors[q.dom] || "#5C7368" }}>
                                                 {q.dom} · {Number(q.cotacao).toFixed(1)}
                                             </div>
                                         </th>
@@ -127,10 +134,11 @@ export default function LancarNotas({ alunos, insts, saveNotas }) {
                                                             type="number"
                                                             step="0.1"
                                                             min={0}
-                                                            max={q.cotacao}
+                                                            max={NOTA_MAX}
                                                             value={cur ?? ""}
-                                                            onChange={(e) => updateNota(a.id, q.id, e.target.value, q.cotacao)}
+                                                            onChange={(e) => updateNota(a.id, q.id, e.target.value)}
                                                             className="grid-cell-input"
+                                                            placeholder="0-10"
                                                         />
                                                     </td>
                                                 );

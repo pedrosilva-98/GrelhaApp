@@ -1,13 +1,8 @@
 import { useState } from "react";
 import { X, School } from "lucide-react";
 
-export default function TurmaFormModal({ initial, onClose, onSubmit, title = "Nova turma" }) {
-    const [form, setForm] = useState({
-        nome: initial?.nome || "",
-        disciplina: initial?.disciplina || "",
-        ano: initial?.ano || "",
-        turma: initial?.turma || "",
-    });
+export default function TurmaFormModal({ onClose, onSubmit, title = "Nova turma" }) {
+    const [form, setForm] = useState({ disciplina: "", ano: "", turma: "" });
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
 
@@ -17,7 +12,6 @@ export default function TurmaFormModal({ initial, onClose, onSubmit, title = "No
         setBusy(true);
         try {
             await onSubmit({
-                nome: form.nome.trim(),
                 disciplina: form.disciplina.trim(),
                 ano: form.ano.trim(),
                 turma: form.turma.trim(),
@@ -45,17 +39,12 @@ export default function TurmaFormModal({ initial, onClose, onSubmit, title = "No
                 </div>
 
                 <form onSubmit={submit} className="space-y-4" data-testid="turma-form">
-                    <div>
-                        <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Nome interno</label>
-                        <input required data-testid="turma-nome" className="input-forest" value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} placeholder="Ex: Matemática 6ºA" />
-                        <div className="text-[11px] text-brand-charcoal/50 mt-1">Como quer identificá-la na lista.</div>
-                    </div>
                     <div className="grid grid-cols-3 gap-3">
-                        <div>
+                        <div className="col-span-3">
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Disciplina</label>
-                            <input required data-testid="turma-disciplina" className="input-forest" value={form.disciplina} onChange={(e) => setForm((f) => ({ ...f, disciplina: e.target.value }))} placeholder="Matemática" />
+                            <input required data-testid="turma-disciplina" className="input-forest" value={form.disciplina} onChange={(e) => setForm((f) => ({ ...f, disciplina: e.target.value }))} placeholder="Ex: Matemática" />
                         </div>
-                        <div>
+                        <div className="col-span-2">
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Ano</label>
                             <input required data-testid="turma-ano" className="input-forest" value={form.ano} onChange={(e) => setForm((f) => ({ ...f, ano: e.target.value }))} placeholder="6º" />
                         </div>
