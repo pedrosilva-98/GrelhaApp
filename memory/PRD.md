@@ -1,43 +1,43 @@
 # PRD — Grelha de Avaliação Docente
 
 ## Original problem statement
-Desenvolver web app com base num componente React de "Grelhas de Avaliação" para professores em Portugal.
-Requisitos adicionais do utilizador:
-- Autenticação (JWT email/password, stack React + FastAPI + MongoDB).
-- Contas criadas apenas pelo administrador.
-- Sem painel admin para ver grelhas de todos os professores (apenas dashboard do professor).
-- Exportação de grelha em PDF.
-- Redesign moderno e distintivo (não manter o layout minimalista original).
+Web app de "Grelhas de Avaliação" para professores em Portugal com JWT auth (React + FastAPI + MongoDB), contas criadas apenas pelo administrador, sem painel admin para ver grelhas dos professores, exportação PDF, e redesign moderno.
+
+## Refactor 2026-01 — Múltiplas turmas por professor
+- Admin apenas cria conta (nome, email, palavra-passe). Não gere disciplina/ano/turma.
+- Cada professor cria e gere as suas próprias **turmas** (nome interno + disciplina + ano + letra).
+- Alunos, instrumentos e ponderações passam a ser por turma (isolados entre turmas).
+- Seletor de turma no cabeçalho do professor (dropdown com criar/eliminar).
 
 ## Personas
-- **Administrador** — cria e faz gestão das contas dos professores.
-- **Professor** — introduz alunos, cria instrumentos de avaliação, lança notas, ajusta ponderações, exporta grelha em PDF.
+- **Administrador** — cria/elimina contas de professores.
+- **Professor** — cria as suas turmas, gere alunos, instrumentos, notas, ponderações, exporta PDF por turma.
 
-## Core (static) requirements
-- Cada professor só vê os seus dados.
-- Ponderações dos domínios (CP, RRP, CM, ER) devem somar 100%.
-- Cálculo automático de: classificação por instrumento, média por domínio, média final ponderada, nível qualitativo.
+## Static requirements
+- Cada professor só vê os seus dados (turmas, alunos, instrumentos, notas).
+- Ponderações CP/RRP/CM/ER devem somar 100% para guardar.
+- Cálculo automático: classificação por instrumento, média por domínio, média final ponderada, nível qualitativo (Muito Bom → Reduzido).
 
-## Implemented (2026-01)
-- Backend FastAPI: `/api/auth/*`, `/api/admin/teachers`, `/api/alunos`, `/api/instrumentos`, `/api/ponderacoes` com JWT bearer + bcrypt + Mongo indexes.
-- Admin seed via env (`ADMIN_EMAIL` / `ADMIN_PASSWORD`).
-- Frontend React (react-router):
-  - `/login` — split-screen com foto Costa Nova (design "organic & earthy").
-  - `/admin` — lista, cria, elimina professores.
-  - `/app` — abas Resumo, Turma, Instrumentos, Lançar notas, Configurar.
+## Implemented
+- **Auth**: `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`. JWT Bearer + bcrypt. Admin seed.
+- **Admin**: `/api/admin/teachers` (list/create/delete). Delete cascades para todas as turmas.
+- **Turmas**: `/api/turmas` CRUD, cascade delete para alunos/instrumentos/ponderacoes.
+- **Alunos**: `/api/alunos?turma_id=...` (GET/POST), `/api/alunos/{id}` (DELETE, com auth por turma dono).
+- **Instrumentos**: `/api/instrumentos?turma_id=...` + `PUT /notas` + `DELETE`.
+- **Ponderacoes**: `/api/ponderacoes?turma_id=...` (GET/PUT, valida soma=100).
+- **Frontend**:
+  - `/login` split-screen com foto Costa Nova (design "organic & earthy").
+  - `/admin` — formulário simplificado (nome, email, password).
+  - `/app` — empty state de "criar 1ª turma"; seletor de turma no header; abas Resumo, Turma, Instrumentos, Lançar notas (auto-save 600 ms), Configurar; exportação PDF landscape.
 - Tipografia Playfair Display + IBM Plex Sans + JetBrains Mono.
-- Auto-guardar de notas (debounce 600 ms).
-- Exportação PDF landscape com `jspdf` + `jspdf-autotable`.
-- Badges qualitativos (Muito Bom / Bom / Suficiente / Insuficiente / Reduzido).
 
 ## Backlog
-- **P1** — Suporte a múltiplas turmas por professor.
-- **P1** — Recuperação de palavra-passe / mudança pelo próprio professor.
-- **P2** — Anexos / observações qualitativas por instrumento.
-- **P2** — Estatísticas comparativas entre períodos.
-- **P2** — Importação de alunos via CSV.
-- **P3** — Painel administrador com vista agregada por turma / disciplina.
+- **P1** — Recuperação/mudança de palavra-passe.
+- **P2** — Renomear/editar turma via UI (endpoint PUT já existe).
+- **P2** — Observações qualitativas por instrumento; anexos.
+- **P2** — Importação CSV de alunos.
+- **P2** — Atalhos de teclado (Enter/Tab) na grelha de lançar notas.
+- **P3** — Painel admin agregado por disciplina/ano.
 
-## Next tasks
-1. Testes end-to-end via testing agent (login, admin cria professor, professor completa fluxo, PDF).
-2. Fix de eventuais bugs reportados.
+## Test credentials
+`admin@escola.pt` / `admin123` (auto-seeded from `.env`).
