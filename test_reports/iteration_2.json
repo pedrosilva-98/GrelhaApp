@@ -1,0 +1,41 @@
+{
+  "summary": "Full retest passed. POST /api/admin/teachers now returns 200 with clean JSON (no ObjectId). End-to-end frontend flow works: admin login → create Ana Silva → success banner + list refresh → logout → login as ana → add aluno → create instrumento (Ficha 1, F.Sumativa, CP q1 cotacao=20) → enter nota=15.5 → switch to dashboard and back → value persisted (auto-save works) → config default 100% saves → PDF export downloads successfully. Role guards still enforced (admin→/api/alunos=403, teacher→/api/admin/teachers=403).",
+  "passed": [
+    "curl POST /api/admin/teachers → 200 with clean JSON (no _id, no password_hash)",
+    "Admin GET /api/alunos → 403",
+    "Teacher GET /api/admin/teachers → 403",
+    "UI: admin login → /admin",
+    "UI: create teacher modal closes; success banner shows email + password; list refreshes",
+    "UI: teacher login → /app",
+    "UI: add aluno 'Aluno Teste' persists",
+    "UI: create instrumento 'Ficha 1' (F.Sumativa, q1 CP cotacao=20) works",
+    "UI: nota=15.5 auto-saves in 600ms debounce and persists across tab-dashboard → tab-notas navigation",
+    "UI: pond-save-btn saves with default 50/25/10/15 (sum=100), button shows 'Guardado ✓'",
+    "UI: export-pdf-btn triggers download of grelha_A_Matemática_<date>.pdf without error"
+  ],
+  "failed": [],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Teacher /app (LancarNotas)", "issues": ["Non-blocking React hydration warning: dev-tool instrumentation injects <span> inside <option> in <select data-testid='notas-inst-select'>. Cosmetic dev-only warning; does not affect functionality. Likely from the react dev overlay (x-file-name attributes), not app code."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_2.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Consider using explicit response_model=TeacherOut on POST /api/admin/teachers instead of manual dict stripping — safer long-term (prevents future field leaks like password_hash if someone forgets to strip).",
+    "Same _id/serialization pattern is used in add_aluno and add_instrumento (pop _id manually). Works but a Pydantic response_model on each POST is more robust.",
+    "CORS allows origins '*' with allow_credentials=True — invalid combination per spec (browsers reject). Not currently causing issues because frontend uses Bearer tokens in Authorization header (not cookies), but should be tightened.",
+    "TeacherOut model is defined but not used as response_model anywhere.",
+    "Instrumento question field is 'dom' (not 'dominio' as review spec text sometimes suggests) — confirmed matches frontend."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3 rechecked)", "frontend": "100% (9/9 e2e steps)"},
+  "test_credentials": "admin@escola.pt/admin123; test teacher created & deleted during test: ana@escola.pt/ana12345",
+  "seed_data_creation": "None left behind — ana@escola.pt teacher and all cascaded data deleted after test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All primary flows working. Only cosmetic dev-only React hydration warning in <select> options remains; likely emergent dev instrumentation, not real app code."
+}

@@ -186,6 +186,7 @@ async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
+    doc.pop("_id", None)
     # Seed default ponderacoes
     await db.ponderacoes.update_one(
         {"prof_id": doc["id"]},
