@@ -1,0 +1,101 @@
+{
+  "theme": "Light theme preferred (Archetype 1: Organic & Earthy mixed with high-density data grids). Ensures excellent readability and a 'premium tactile paper' feel suitable for an education dashboard.",
+  "typography": {
+    "fonts": {
+      "heading": "Playfair Display",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight text-brand-forest",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-brand-forest",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed text-brand-charcoal",
+      "data_table": "text-sm tabular-nums text-brand-charcoal",
+      "labels": "text-xs font-bold uppercase tracking-[0.2em] text-brand-sage"
+    },
+    "pairing_archetype": "The 'Old Money Tech' adapted for Education: Classic Serif Headings (academic authority) + Sterile Sans Body (clarity for data/grading grids)."
+  },
+  "colors": {
+    "archetype": "ORGANIC & EARTHY (Trust, Growth, Calm)",
+    "palette": {
+      "background_page": "#F9F8F6",
+      "background_surface": "#FFFFFF",
+      "border": "#E5E3DB",
+      "text_primary": "#2C3E35",
+      "text_secondary": "#5C7368",
+      "primary_brand": "#2C4A3B",
+      "primary_hover": "#1E3329",
+      "accent_terracotta": "#C86A53",
+      "accent_ochre": "#D99E41",
+      "accent_sky": "#6B8BA4",
+      "accent_sage": "#8A9A86"
+    },
+    "badges": {
+      "muito_bom": "bg-[#E6F3E6] text-[#2E6B2E] border border-[#B3D9B3]",
+      "bom": "bg-[#EBF4FA] text-[#2B5A84] border border-[#B8D4EA]",
+      "suficiente": "bg-[#FEF5E6] text-[#8A5A19] border border-[#F7DBAA]",
+      "insuficiente": "bg-[#FDF0ED] text-[#9E3921] border border-[#F5C2B8]",
+      "reduzido": "bg-[#F4EBEB] text-[#7A2A2A] border border-[#D9B3B3]"
+    },
+    "domains": {
+      "CP": "Conceitos e Procedimentos - highlight using #2C4A3B (Forest)",
+      "RRP": "Raciocínio e Resolução de Problemas - highlight using #6B8BA4 (Sky)",
+      "CM": "Comunicação Matemática - highlight using #D99E41 (Ochre)",
+      "ER": "Ético-Relacional - highlight using #C86A53 (Terracotta)"
+    }
+  },
+  "layout_and_grids": {
+    "spacing_strategy": "Generous Spacing. Use p-6 or p-8 for inner cards, p-8 or p-12 for page containers. Bento Grid protocol for Dashboard Resumo.",
+    "dashboard_grid": "MODE B: High Density Grid (grid-cols-1 md:grid-cols-3 lg:grid-cols-4). Tight gaps (gap-4 or gap-6) for data correlation.",
+    "cards": "Subtle roundness (rounded-lg or rounded-xl, max 8px). Flat solid backgrounds. 1px crisp borders (border-[#E5E3DB]). Soft diffuse ambient shadow on hover only.",
+    "headers": "Solid background with a hard bottom border. No glassmorphism over scrolling content to maintain the solid 'document' feel."
+  },
+  "visual_enhancers": {
+    "textures": "Subtle noise/grain overlay on the login page background to give it a physical paper/tactile feel. Avoid gloss.",
+    "borders": "1px crisp borders (Grid Borders style). Expose the skeleton for data-heavy sections.",
+    "icons": "Phosphor Icons (@phosphor-icons/react) for a premium, duotone or light weight look.",
+    "data_viz": "Shadcn Chart components (Recharts). Use the domain colors for bars/pies. Clean tooltips with solid backgrounds."
+  },
+  "components": {
+    "forms_inputs": "Shadcn components heavily customized with earthy colors. Focus states must use primary_brand ring (ring-[#2C4A3B]).",
+    "tables": "High density Shadcn Tables for 'Lançar Notas'. Must use tabular-nums. Sticky headers for easy scrolling through large classes. Alternate row background colors slightly (bg-[#F9F8F6]) for readability.",
+    "tabs": "Shadcn Tabs for switching contexts. Override default heights to let them breathe.",
+    "sliders": "Shadcn Slider for 'Configurar' view. The 4 domain sliders must dynamically show percentages that sum up to 100%.",
+    "modals": "Dialog for 'Criar Instrumento' and 'Adicionar Aluno'. Dark overlay (bg-black/40) with blur."
+  },
+  "motion": {
+    "interactions": "Hover states on all rows and interactive elements. Subtle lift (-translate-y-[1px]) on dashboard metric cards.",
+    "transitions": "Specific property transitions only: transition-colors duration-200, transition-transform duration-200. NO transition-all.",
+    "charts": "Gentle entrance animations for dashboard distribution charts."
+  },
+  "accessibility": {
+    "contrast": "Ensure text over colored badges meets APCA/WCAG standards (e.g., dark text on light badge backgrounds).",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='login-submit').",
+    "keyboard": "The Lançar Notas (Grade Entry) grid MUST be fully navigable via keyboard (Tab/Enter) to speed up teacher data entry."
+  },
+  "image_urls": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1563416854-0e5e3a0cfdb5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHw0fHxwb3J0dWdhbCUyMGFyY2hpdGVjdHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4MzUyMDIxOHww&ixlib=rb-4.1.0&q=85",
+      "description": "White and red traditional house under blue sky (Costa Nova, Portugal). Use as a side-panel hero image on the split-screen Login page with a slight warm overlay.",
+      "category": "Hero/Background"
+    },
+    "teacher_avatar": {
+      "url": "https://images.unsplash.com/photo-1758685848226-eedca8f6bce7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwzfHx0ZWFjaGVyJTIwcG9ydHJhaXQlMjBwcm9mZXNzaW9uYWwlMjBzbWlsaW5nfGVufDB8fHx8MTc4MzUyMDIyNXww&ixlib=rb-4.1.0&q=85",
+      "description": "Professional teacher portrait.",
+      "category": "Avatar"
+    }
+  },
+  "instructions_to_main_agent": [
+    "You have .js files not .tsx file, so share and write code for .js files not for .tsx files.",
+    "Implement pure HTML/Tailwind for custom layouts like the split-screen Login.",
+    "Use Shadcn UI for Dashboard data tables, forms, dialogues, and sliders.",
+    "All text MUST be in European Portuguese (e.g., 'Resumo', 'Turma', 'Instrumentos', 'Lançar Notas', 'Configurar').",
+    "Implement PDF export functionality for the Lançar Notas grid.",
+    "Create a top navigation or contextual header with a seletor de professor (Nome, Disciplina, Ano, Turma).",
+    "For the 'Lançar Notas' view, build a grid input allowing score entry per question with automatic percentage and badge level calculation.",
+    "Build the Admin page strictly for creating teacher accounts.",
+    "Do NOT center align the main app container. Ensure left-aligned typographic hierarchy."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "Do not use 'transition: all' globally. Apply distinct hover states to all buttons/links. Do not center text globally. Create depth with layered shadows. Do not use AI emojis for icons. Use standard modern icon libraries (Phosphor Icons). Ensure high contrast for all text. Missing images should never use placeholder text. Prioritize existing shadcn components."
+}
