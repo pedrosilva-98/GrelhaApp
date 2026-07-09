@@ -10,7 +10,11 @@ export const NIVEIS = [
 ];
 
 export const TIPOS_INSTRUMENTO = [
-    "F.Sumativa", "F.Formativa", "Q.Aula", "TPC", "OB.Direta", "F.Diagnóstica",
+    "Avaliação Sumativa",
+    "Avaliação Formativa",
+    "Questão de Aula",
+    "Observação Direta",
+    "Avaliação de Diagnóstico",
 ];
 
 // Palette to pick colors for domains by index

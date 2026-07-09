@@ -15,8 +15,7 @@ import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Downlo
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
     { id: "alunos", label: "Turma", icon: Users },
-    { id: "instrumentos", label: "Instrumentos", icon: ClipboardList },
-    { id: "notas", label: "Lançar notas", icon: Pencil },
+    { id: "instrumentos", label: "Instrumentos de avaliação", icon: ClipboardList },
     { id: "config", label: "Configurar", icon: Settings },
 ];
 
@@ -36,6 +35,7 @@ export default function Teacher() {
 
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
+    const [classifyingInstId, setClassifyingInstId] = useState(null);
 
     const [loadingTurmas, setLoadingTurmas] = useState(true);
     const [loadingData, setLoadingData] = useState(false);
@@ -87,8 +87,10 @@ export default function Teacher() {
         if (turmaId) {
             localStorage.setItem(LS_TURMA_KEY, turmaId);
             loadTurmaData(turmaId);
+            setClassifyingInstId(null);
         } else {
             setAlunos([]); setInsts([]);
+            setClassifyingInstId(null);
         }
     }, [turmaId]);
 
@@ -108,6 +110,12 @@ export default function Teacher() {
 
     async function duplicateTurma() {
         if (!turmaAtiva) return;
+        const ok = window.confirm(
+            `Duplicar a turma "${turmaAtiva.disciplina} ${turmaAtiva.ano}${turmaAtiva.turma}"?\n\n` +
+            "Só as configurações são copiadas (disciplina, ano, domínios e ponderações).\n" +
+            "Os alunos e instrumentos NÃO são copiados."
+        );
+        if (!ok) return;
         const { data } = await api.post(`/turmas/${turmaAtiva.id}/duplicate`);
         setTurmas((s) => [...s, data]);
         setTurmaId(data.id);
@@ -314,7 +322,7 @@ export default function Teacher() {
                                     data-testid={`tab-${t.id}`}
                                     role="tab"
                                     aria-selected={active}
-                                    onClick={() => setTab(t.id)}
+                                    onClick={() => { setTab(t.id); setClassifyingInstId(null); }}
                                     className={`flex items-center gap-2 px-4 py-2.5 text-sm border-b-2 transition-colors duration-200 whitespace-nowrap ${
                                         active
                                             ? "border-brand-forest text-brand-forest font-medium"
@@ -340,8 +348,33 @@ export default function Teacher() {
                     <>
                         {tab === "dashboard" && <Dashboard alunos={alunos} insts={insts} dominios={dominios} />}
                         {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} />}
-                        {tab === "instrumentos" && <Instrumentos insts={insts} dominios={dominios} addInstrumento={addInstrumento} updateInstrumento={updateInstrumento} delInstrumento={delInstrumento} />}
-                        {tab === "notas" && <LancarNotas alunos={alunos} insts={insts} dominios={dominios} saveNotas={saveNotas} />}
+                        {tab === "instrumentos" && (
+                            classifyingInstId ? (
+                                <div className="anim-in">
+                                    <div className="mb-4">
+                                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Instrumentos de avaliação</div>
+                                        <h2 className="font-serif text-xl text-brand-forest">Classificações</h2>
+                                    </div>
+                                    <LancarNotas
+                                        alunos={alunos}
+                                        insts={insts}
+                                        dominios={dominios}
+                                        saveNotas={saveNotas}
+                                        focusedInstId={classifyingInstId}
+                                        onBack={() => setClassifyingInstId(null)}
+                                    />
+                                </div>
+                            ) : (
+                                <Instrumentos
+                                    insts={insts}
+                                    dominios={dominios}
+                                    addInstrumento={addInstrumento}
+                                    updateInstrumento={updateInstrumento}
+                                    delInstrumento={delInstrumento}
+                                    onClassify={(id) => setClassifyingInstId(id)}
+                                />
+                            )
+                        )}
                         {tab === "config" && <Config dominios={dominios} saveDominios={saveDominios} />}
                     </>
                 )}

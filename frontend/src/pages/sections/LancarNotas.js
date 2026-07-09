@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Badge from "@/components/Badge";
 import { calcClassif, domColor, NOTA_MAX } from "@/lib/grelha";
-import { Info, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Info, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
-export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
-    const [instId, setInstId] = useState(insts[0]?.id || null);
+export default function LancarNotas({ alunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
+    const [instId, setInstId] = useState(focusedInstId || insts[0]?.id || null);
 
     useEffect(() => {
-        if (!insts.find((i) => i.id === instId)) {
+        if (focusedInstId) setInstId(focusedInstId);
+    }, [focusedInstId]);
+
+    useEffect(() => {
+        if (!focusedInstId && !insts.find((i) => i.id === instId)) {
             setInstId(insts[0]?.id || null);
         }
-    }, [insts, instId]);
+    }, [insts, instId, focusedInstId]);
 
     const inst = insts.find((i) => i.id === instId);
     const [notas, setNotas] = useState(inst?.notas || {});
@@ -218,6 +222,11 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
             )}
 
             <div className="flex items-center gap-3 flex-wrap">
+                {onBack && (
+                    <button data-testid="notas-back-btn" onClick={onBack} className="btn-ghost text-sm">
+                        <ArrowLeft size={14} /> Voltar aos instrumentos
+                    </button>
+                )}
                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage">Instrumento</label>
                 <select
                     data-testid="notas-inst-select"
@@ -246,8 +255,8 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                                             </div>
                                         </th>
                                     ))}
-                                    <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Classif.</th>
-                                    <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Nível</th>
+                                    <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Avaliação Quantitativa</th>
+                                    <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Avaliação Qualitativa</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -281,7 +290,7 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                                             <td className="px-4 py-2.5 tabular-nums font-serif text-base text-brand-forest">
                                                 {classif != null ? classif.toFixed(1) + "%" : "—"}
                                             </td>
-                                            <td className="px-4 py-2.5"><Badge v={classif} /></td>
+                                            <td className="px-4 py-2.5"><Badge v={classif} mode="number" /></td>
                                         </tr>
                                     );
                                 })}

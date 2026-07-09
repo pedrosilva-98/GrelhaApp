@@ -79,7 +79,7 @@ export default function Dashboard({ alunos, insts, dominios }) {
                                     <td className="px-4 py-3 tabular-nums font-serif text-brand-forest text-base">
                                         {a.media != null ? a.media.toFixed(1) + "%" : "—"}
                                     </td>
-                                    <td className="px-4 py-3"><Badge v={a.media} /></td>
+                                    <td className="px-4 py-3"><Badge v={a.media} mode="number" /></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -97,7 +97,7 @@ export default function Dashboard({ alunos, insts, dominios }) {
                             <div className="w-full h-1.5 bg-crisp/60 rounded-full overflow-hidden mb-3">
                                 <div className="h-full bg-brand-forest rounded-full transition-all duration-500" style={{ width: `${(d.count / maxCount) * 100}%` }} />
                             </div>
-                            <Badge level={d.n} />
+                            <Badge level={d.n} mode="number" />
                         </div>
                     ))}
                 </div>

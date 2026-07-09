@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { Plus, X, Trash2, FilePlus, Pencil } from "lucide-react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck } from "lucide-react";
 import { TIPOS_INSTRUMENTO, domColor } from "@/lib/grelha";
 
 function buildInitial(dominios) {
-    return { nome: "", tipo: "F.Sumativa", data: "", questoes: [{ id: "q1", dom: dominios[0]?.code || "", cotacao: "" }] };
+    return {
+        nome: "",
+        tipo: TIPOS_INSTRUMENTO[0],
+        data: "",
+        questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "" }],
+    };
 }
 
-export default function Instrumentos({ insts, dominios, addInstrumento, updateInstrumento, delInstrumento }) {
+export default function Instrumentos({ insts, dominios, addInstrumento, updateInstrumento, delInstrumento, onClassify }) {
     const [editing, setEditing] = useState(null); // null | 'new' | inst_id
     const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
@@ -38,7 +43,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
     function addQ() {
         setForm((f) => ({
             ...f,
-            questoes: [...f.questoes, { id: "q" + (f.questoes.length + 1), dom: dominios[0]?.code || "", cotacao: "" }],
+            questoes: [...f.questoes, { id: "", dom: dominios[0]?.code || "", cotacao: "" }],
         }));
     }
     function removeQ(idx) {
@@ -55,7 +60,10 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
         const qs = form.questoes
             .filter((q) => q.id.trim() && q.cotacao !== "" && !Number.isNaN(parseFloat(q.cotacao)))
             .map((q) => ({ id: q.id.trim(), dom: q.dom, cotacao: parseFloat(q.cotacao) }));
-        if (!qs.length) { setError("Adicione pelo menos uma questão com cotação."); return; }
+        if (!qs.length) { setError("Adicione pelo menos uma questão com identificador e cotação."); return; }
+        // Guard against duplicate question IDs within the same instrument
+        const ids = qs.map((q) => q.id);
+        if (new Set(ids).size !== ids.length) { setError("Os identificadores de questão têm de ser únicos."); return; }
         setBusy(true);
         try {
             const payload = { nome: form.nome.trim(), tipo: form.tipo, data: form.data, questoes: qs };
@@ -72,12 +80,20 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
     const totalCot = form.questoes.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0);
     const domByCode = Object.fromEntries(dominios.map((d, i) => [d.code, { ...d, color: domColor(i) }]));
 
+    // Format ISO date "YYYY-MM-DD" to "DD/MM/YYYY" for display
+    function fmtDate(iso) {
+        if (!iso) return "—";
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+        if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+        return iso; // legacy free-text values remain readable
+    }
+
     return (
         <div className="space-y-6 anim-in" data-testid="instrumentos-view">
             <div className="flex items-center justify-between">
                 <div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Avaliação</div>
-                    <h2 className="font-serif text-xl text-brand-forest">Instrumentos</h2>
+                    <h2 className="font-serif text-xl text-brand-forest">Instrumentos de avaliação</h2>
                 </div>
                 {!editing && (
                     <button data-testid="new-instrumento-btn" onClick={openNew} className="btn-primary">
@@ -110,12 +126,18 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                         <div>
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Tipo</label>
                             <select data-testid="inst-tipo" className="input-forest" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))}>
-                                {TIPOS_INSTRUMENTO.map((t) => <option key={t}>{t}</option>)}
+                                {TIPOS_INSTRUMENTO.map((t) => <option key={t} value={t}>{t}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Data</label>
-                            <input data-testid="inst-data" className="input-forest" placeholder="dd/mm/aaaa" value={form.data} onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))} />
+                            <input
+                                data-testid="inst-data"
+                                type="date"
+                                className="input-forest"
+                                value={form.data && /^\d{4}-\d{2}-\d{2}$/.test(form.data) ? form.data : ""}
+                                onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
+                            />
                         </div>
                     </div>
 
@@ -127,7 +149,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                             {form.questoes.map((q, i) => (
                                 <div key={i} className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-brand-sage w-6 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                                    <input data-testid={`q-id-${i}`} className="input-forest w-28" placeholder="ID (ex: 1.1)" value={q.id} onChange={(e) => updateQ(i, "id", e.target.value)} />
+                                    <input data-testid={`q-id-${i}`} className="input-forest w-32" placeholder="Identificador" value={q.id} onChange={(e) => updateQ(i, "id", e.target.value)} />
                                     <select
                                         data-testid={`q-dom-${i}`}
                                         className="input-forest w-32"
@@ -169,7 +191,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                             <th className="px-5 py-2.5 font-semibold">Data</th>
                             <th className="px-5 py-2.5 font-semibold">Questões</th>
                             <th className="px-5 py-2.5 font-semibold">Total pts</th>
-                            <th className="px-5 py-2.5 font-semibold w-24"></th>
+                            <th className="px-5 py-2.5 font-semibold w-36 text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody data-testid="instrumentos-list">
@@ -181,11 +203,19 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                                 <td className="px-5 py-3">
                                     <span className="text-[11px] bg-page border border-crisp text-brand-charcoal/80 px-2 py-0.5 rounded-full">{inst.tipo}</span>
                                 </td>
-                                <td className="px-5 py-3 text-brand-charcoal/70">{inst.data || "—"}</td>
+                                <td className="px-5 py-3 text-brand-charcoal/70">{fmtDate(inst.data)}</td>
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.questoes.length}</td>
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.questoes.reduce((s, q) => s + Number(q.cotacao), 0).toFixed(1)}</td>
                                 <td className="px-5 py-3 text-right">
-                                    <div className="flex justify-end gap-1">
+                                    <div className="flex justify-end gap-1 flex-wrap">
+                                        <button
+                                            data-testid={`classif-inst-${inst.id}`}
+                                            onClick={() => onClassify && onClassify(inst.id)}
+                                            className="btn-primary !px-3 !py-1.5 text-xs"
+                                            title="Abrir classificações"
+                                        >
+                                            <ClipboardCheck size={13} /> Classificações
+                                        </button>
                                         <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
                                             <Pencil size={14} />
                                         </button>
