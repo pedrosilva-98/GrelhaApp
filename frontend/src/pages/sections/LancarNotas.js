@@ -1,15 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Badge from "@/components/Badge";
 import { calcClassif, domColor, NOTA_MAX } from "@/lib/grelha";
-import { Info } from "lucide-react";
-
-function useDebouncedCallback(cb, delay) {
-    const t = useRef(null);
-    return (...args) => {
-        if (t.current) clearTimeout(t.current);
-        t.current = setTimeout(() => cb(...args), delay);
-    };
-}
+import { Info, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
     const [instId, setInstId] = useState(insts[0]?.id || null);
@@ -22,15 +14,76 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
 
     const inst = insts.find((i) => i.id === instId);
     const [notas, setNotas] = useState(inst?.notas || {});
-    const [savedFlash, setSavedFlash] = useState(false);
+    const [status, setStatus] = useState("idle"); // idle | dirty | saving | saved | error
+    const [errorMsg, setErrorMsg] = useState("");
 
-    useEffect(() => { setNotas(inst?.notas || {}); }, [inst?.id]);
+    // Save queue — one in-flight max, latest pending payload wins.
+    const timerRef = useRef(null);
+    const pendingRef = useRef(null); // { instId, payload }
+    const inFlightRef = useRef(false);
 
-    const debouncedSave = useDebouncedCallback(async (id, payload) => {
-        await saveNotas(id, payload);
-        setSavedFlash(true);
-        setTimeout(() => setSavedFlash(false), 1200);
-    }, 600);
+    useEffect(() => {
+        setNotas(inst?.notas || {});
+        setStatus("idle");
+        setErrorMsg("");
+    }, [inst?.id]);
+
+    const flush = useCallback(async () => {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        if (!pendingRef.current || inFlightRef.current) return;
+        const { instId: iid, payload } = pendingRef.current;
+        pendingRef.current = null;
+        inFlightRef.current = true;
+        setStatus("saving");
+        try {
+            await saveNotas(iid, payload);
+            setStatus("saved");
+            setErrorMsg("");
+            setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1500);
+        } catch (e) {
+            const detail = e?.response?.data?.detail || e?.message || "Falha ao guardar";
+            setErrorMsg(String(detail));
+            setStatus("error");
+            // Re-queue payload so a next edit / retry can retry
+            pendingRef.current = { instId: iid, payload };
+        } finally {
+            inFlightRef.current = false;
+            // If another change happened while flying, kick another save
+            if (pendingRef.current && status !== "error") {
+                timerRef.current = setTimeout(flush, 200);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [saveNotas]);
+
+    // Warn user if leaving with unsaved changes
+    useEffect(() => {
+        function beforeUnload(e) {
+            if (pendingRef.current || inFlightRef.current || status === "error") {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        }
+        window.addEventListener("beforeunload", beforeUnload);
+        return () => window.removeEventListener("beforeunload", beforeUnload);
+    }, [status]);
+
+    // On unmount or inst change: force flush pending
+    useEffect(() => {
+        return () => { flush(); };
+    }, [flush]);
+
+    function queueSave(iid, payload, immediate = false) {
+        pendingRef.current = { instId: iid, payload };
+        setStatus("dirty");
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(flush, immediate ? 0 : 600);
+    }
+
+    function retry() {
+        setStatus("dirty");
+        flush();
+    }
 
     const domColors = Object.fromEntries(dominios.map((d, i) => [d.code, domColor(i)]));
 
@@ -54,7 +107,7 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
             }
             if (Object.keys(inner).length) clean[aid] = inner;
         }
-        debouncedSave(inst.id, clean);
+        queueSave(inst.id, clean);
     }
 
     function focusCell(rowIdx, colIdx) {
@@ -71,6 +124,8 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
         const colsN = inst?.questoes.length || 0;
         if (key === "Enter") {
             e.preventDefault();
+            // Force immediate save on Enter for peace of mind
+            flush();
             const next = e.shiftKey ? rowIdx - 1 : rowIdx + 1;
             if (next >= 0 && next < rowsN) focusCell(next, colIdx);
         } else if (key === "ArrowDown") {
@@ -80,11 +135,16 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
             e.preventDefault();
             if (rowIdx - 1 >= 0) focusCell(rowIdx - 1, colIdx);
         } else if (key === "ArrowRight" && e.target.selectionStart === e.target.value.length) {
-            // move to next col
             if (colIdx + 1 < colsN) { e.preventDefault(); focusCell(rowIdx, colIdx + 1); }
         } else if (key === "ArrowLeft" && e.target.selectionStart === 0) {
             if (colIdx - 1 >= 0) { e.preventDefault(); focusCell(rowIdx, colIdx - 1); }
         }
+    }
+
+    // Force flush when switching instrument via the select
+    function onInstChange(newId) {
+        flush();
+        setInstId(newId);
     }
 
     if (!insts.length) {
@@ -101,18 +161,61 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
 
     const instWithNotas = inst ? { ...inst, notas } : null;
 
+    const statusBadge = (() => {
+        if (status === "error") return (
+            <button
+                onClick={retry}
+                className="flex items-center gap-1.5 text-[#9E3921] hover:underline"
+                title={errorMsg}
+                data-testid="notas-save-status"
+            >
+                <AlertCircle size={14} /> Erro ao guardar — repetir
+            </button>
+        );
+        if (status === "saving") return (
+            <span className="flex items-center gap-1.5 text-brand-sage" data-testid="notas-save-status">
+                <Loader2 size={14} className="animate-spin" /> A guardar...
+            </span>
+        );
+        if (status === "saved") return (
+            <span className="flex items-center gap-1.5 text-[#2E6B2E]" data-testid="notas-save-status">
+                <CheckCircle2 size={14} /> Guardado
+            </span>
+        );
+        if (status === "dirty") return (
+            <span className="flex items-center gap-1.5 text-brand-charcoal/60" data-testid="notas-save-status">
+                <Loader2 size={14} className="animate-spin" /> Alterações por guardar…
+            </span>
+        );
+        return (
+            <span className="flex items-center gap-1.5 text-brand-sage/70" data-testid="notas-save-status">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-sage/40" /> Auto-guardar ativo
+            </span>
+        );
+    })();
+
     return (
         <div className="space-y-5 anim-in" data-testid="notas-view">
-            {/* Nota explicativa */}
             <div className="flex items-start gap-3 rounded-lg border border-[#B8D4EA] bg-[#EBF4FA] px-4 py-3 text-sm text-[#2B5A84]" data-testid="notas-help">
                 <Info size={16} className="flex-shrink-0 mt-0.5" />
                 <div>
                     <strong>Introduza as notas de 0 a 10</strong> em cada questão, independentemente da cotação (pontos). A classificação em percentagem e por domínio é calculada automaticamente, ponderando as respostas pela cotação de cada questão.
                     <div className="mt-1 text-[12px] text-[#2B5A84]/80">
-                        Atalhos: <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> desce, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Shift</kbd>+<kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> sobe, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Tab</kbd> avança questão, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">↑ ↓ ← →</kbd> navegam.
+                        Atalhos: <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> desce e grava, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Shift</kbd>+<kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> sobe, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Tab</kbd> avança questão, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">↑ ↓ ← →</kbd> navegam.
                     </div>
                 </div>
             </div>
+
+            {status === "error" && (
+                <div className="rounded-lg border border-[#F5C2B8] bg-[#FDF0ED] px-4 py-3 text-sm text-[#9E3921] flex items-start gap-3" data-testid="notas-save-error">
+                    <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <strong>Não foi possível guardar a última alteração.</strong>
+                        <div className="text-[13px] mt-1">{errorMsg || "Verifique a ligação à internet."}</div>
+                    </div>
+                    <button onClick={retry} className="btn-ghost text-xs whitespace-nowrap" data-testid="notas-retry-btn">Tentar de novo</button>
+                </div>
+            )}
 
             <div className="flex items-center gap-3 flex-wrap">
                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage">Instrumento</label>
@@ -121,14 +224,11 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                     className="input-forest max-w-md"
                     style={{ width: "auto" }}
                     value={instId || ""}
-                    onChange={(e) => setInstId(e.target.value)}
+                    onChange={(e) => onInstChange(e.target.value)}
                 >
                     {insts.map((i) => <option key={i.id} value={i.id}>{i.nome} · {i.tipo}</option>)}
                 </select>
-                <div className="ml-auto text-xs text-brand-sage flex items-center gap-2">
-                    <span className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${savedFlash ? "bg-[#2E6B2E]" : "bg-brand-sage/40"}`} />
-                    {savedFlash ? "Guardado" : "Auto-guardar ativo"}
-                </div>
+                <div className="ml-auto text-xs">{statusBadge}</div>
             </div>
 
             {inst && (
@@ -170,6 +270,7 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas }) {
                                                             max={NOTA_MAX}
                                                             value={cur ?? ""}
                                                             onChange={(e) => updateNota(a.id, q.id, e.target.value)}
+                                                            onBlur={() => flush()}
                                                             onKeyDown={(e) => onKeyDown(e, rowIdx, colIdx)}
                                                             className="grid-cell-input"
                                                             placeholder="0-10"
