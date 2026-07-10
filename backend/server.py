@@ -140,6 +140,13 @@ class DominioItem(BaseModel):
 class DominiosUpdate(BaseModel):
     dominios: List[DominioItem]
 
+class CompetenciaItem(BaseModel):
+    code: str
+    nome: str
+
+class CompetenciasUpdate(BaseModel):
+    competencias: List[CompetenciaItem]
+
 class AlunoIn(BaseModel):
     nome: str
 
@@ -150,6 +157,7 @@ class Questao(BaseModel):
     id: str
     dom: str
     cotacao: float
+    comp: Optional[str] = None  # competência code (optional)
 
 class InstrumentoIn(BaseModel):
     nome: str
@@ -262,6 +270,7 @@ async def create_turma(body: TurmaCreate, user: dict = Depends(require_teacher))
         "ano": body.ano.strip(),
         "turma": body.turma.strip(),
         "dominios": [dict(d) for d in DEFAULT_DOMINIOS],
+        "competencias": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.turmas.insert_one(doc)
@@ -278,6 +287,7 @@ async def duplicate_turma(turma_id: str, user: dict = Depends(require_teacher)):
         "ano": src.get("ano", ""),
         "turma": (src.get("turma", "") + " (cópia)").strip(),
         "dominios": [dict(d) for d in (src.get("dominios") or DEFAULT_DOMINIOS)],
+        "competencias": [dict(c) for c in (src.get("competencias") or [])],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.turmas.insert_one(doc)
@@ -327,6 +337,38 @@ async def update_dominios(turma_id: str, body: DominiosUpdate, user: dict = Depe
         {"$set": {"dominios": new_dominios}},
     )
     return {"dominios": new_dominios}
+
+@api.put("/turmas/{turma_id}/competencias")
+async def update_competencias(turma_id: str, body: CompetenciasUpdate, user: dict = Depends(require_teacher)):
+    turma = await get_turma_or_404(turma_id, user)
+    # Unique non-empty codes
+    codes = [c.code.strip() for c in body.competencias]
+    if any(not c for c in codes):
+        raise HTTPException(status_code=400, detail="Cada competência precisa de um código")
+    if len(set(codes)) != len(codes):
+        raise HTTPException(status_code=400, detail="Códigos de competência duplicados")
+    # Prevent removing a competencia still referenced by any instrumento questão
+    new_codes = set(codes)
+    old_codes = {c["code"] for c in (turma.get("competencias") or [])}
+    removed = old_codes - new_codes
+    if removed:
+        insts = await db.instrumentos.find(
+            {"turma_id": turma_id, "questoes.comp": {"$in": list(removed)}},
+            {"_id": 0, "nome": 1},
+        ).to_list(1000)
+        if insts:
+            names = ", ".join(i.get("nome", "?") for i in insts[:3])
+            raise HTTPException(
+                status_code=400,
+                detail=f"Não é possível remover competências ainda usadas em instrumentos ({names}). Edite ou elimine esses instrumentos primeiro.",
+            )
+    new_comps = [{"code": c.code.strip(), "nome": c.nome.strip()} for c in body.competencias]
+    await db.turmas.update_one(
+        {"id": turma_id, "prof_id": user["id"]},
+        {"$set": {"competencias": new_comps}},
+    )
+    return {"competencias": new_comps}
+
 
 @api.delete("/turmas/{turma_id}")
 async def delete_turma(turma_id: str, user: dict = Depends(require_teacher)):
@@ -394,10 +436,13 @@ async def get_instrumentos(turma_id: str = Query(...), user: dict = Depends(requ
 @api.post("/instrumentos")
 async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     turma = await get_turma_or_404(turma_id, user)
-    valid_codes = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+    valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+    valid_comps = {c["code"] for c in (turma.get("competencias") or [])}
     for q in body.questoes:
-        if q.dom not in valid_codes:
+        if q.dom not in valid_doms:
             raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
+        if q.comp and q.comp not in valid_comps:
+            raise HTTPException(status_code=400, detail=f"Competência desconhecida: {q.comp}")
     doc = {
         "id": str(uuid.uuid4()),
         "turma_id": turma_id,
@@ -426,10 +471,13 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
     if body.data is not None:
         updates["data"] = body.data
     if body.questoes is not None:
-        valid_codes = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+        valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+        valid_comps = {c["code"] for c in (turma.get("competencias") or [])}
         for q in body.questoes:
-            if q.dom not in valid_codes:
+            if q.dom not in valid_doms:
                 raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
+            if q.comp and q.comp not in valid_comps:
+                raise HTTPException(status_code=400, detail=f"Competência desconhecida: {q.comp}")
         new_q_ids = {q.id for q in body.questoes}
         updates["questoes"] = [q.model_dump() for q in body.questoes]
         # Trim notas: keep only entries with q_id in new_q_ids
