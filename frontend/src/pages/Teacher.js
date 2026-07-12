@@ -9,7 +9,7 @@ import Config from "@/pages/sections/Config";
 import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
-import { exportGrelhaPDF } from "@/lib/pdf";
+import { exportGrelhaPDF, exportInstrumentoRelatorioPDF } from "@/lib/pdf";
 import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound } from "lucide-react";
 
 const TABS = [
@@ -277,7 +277,7 @@ export default function Teacher() {
                         </div>
                         <div className="flex items-center gap-3">
                             <button data-testid="export-pdf-btn" onClick={onExport} disabled={!turmaAtiva} className="btn-ghost">
-                                <Download size={15} /> Exportar PDF
+                                <Download size={15} /> Exportar avaliação final
                             </button>
                             <div className="relative">
                                 <button
@@ -379,6 +379,7 @@ export default function Teacher() {
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
                                     onClassify={(id) => setClassifyingInstId(id)}
+                                    onExportRelatorio={(inst) => exportInstrumentoRelatorioPDF({ user, turma: turmaAtiva, alunos, instrumento: inst })}
                                 />
                             )
                         )}

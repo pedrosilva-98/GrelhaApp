@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck } from "lucide-react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText } from "lucide-react";
 import { TIPOS_INSTRUMENTO, domColor } from "@/lib/grelha";
 
 function buildInitial(dominios) {
@@ -11,7 +11,7 @@ function buildInitial(dominios) {
     };
 }
 
-export default function Instrumentos({ insts, dominios, competencias = [], addInstrumento, updateInstrumento, delInstrumento, onClassify }) {
+export default function Instrumentos({ insts, dominios, competencias = [], addInstrumento, updateInstrumento, delInstrumento, onClassify, onExportRelatorio }) {
     const [editing, setEditing] = useState(null); // null | 'new' | inst_id
     const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
@@ -234,6 +234,14 @@ export default function Instrumentos({ insts, dominios, competencias = [], addIn
                                             title="Abrir classificações"
                                         >
                                             <ClipboardCheck size={13} /> Classificações
+                                        </button>
+                                        <button
+                                            data-testid={`relatorio-inst-${inst.id}`}
+                                            onClick={() => onExportRelatorio && onExportRelatorio(inst)}
+                                            className="btn-ghost !px-2 !py-1.5"
+                                            title="Exportar relatório por competências (PDF)"
+                                        >
+                                            <FileText size={14} />
                                         </button>
                                         <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
                                             <Pencil size={14} />
