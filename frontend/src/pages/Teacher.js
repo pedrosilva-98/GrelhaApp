@@ -43,6 +43,7 @@ export default function Teacher() {
 
     const turmaAtiva = useMemo(() => turmas.find((t) => t.id === turmaId), [turmas, turmaId]);
     const dominios = turmaAtiva?.dominios || [];
+    const competencias = turmaAtiva?.competencias || [];
 
     async function loadTurmas(selectId) {
         setLoadingTurmas(true);
@@ -133,6 +134,11 @@ export default function Teacher() {
     async function saveDominios(newDominios) {
         const { data } = await api.put(`/turmas/${turmaId}/dominios`, { dominios: newDominios });
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, dominios: data.dominios } : t)));
+    }
+
+    async function saveCompetencias(newComps) {
+        const { data } = await api.put(`/turmas/${turmaId}/competencias`, { competencias: newComps });
+        setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, competencias: data.competencias } : t)));
     }
 
     async function addAluno(nome) {
@@ -368,6 +374,7 @@ export default function Teacher() {
                                 <Instrumentos
                                     insts={insts}
                                     dominios={dominios}
+                                    competencias={competencias}
                                     addInstrumento={addInstrumento}
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
@@ -375,7 +382,7 @@ export default function Teacher() {
                                 />
                             )
                         )}
-                        {tab === "config" && <Config dominios={dominios} saveDominios={saveDominios} />}
+                        {tab === "config" && <Config dominios={dominios} competencias={competencias} saveDominios={saveDominios} saveCompetencias={saveCompetencias} />}
                     </>
                 )}
             </main>

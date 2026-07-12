@@ -7,11 +7,11 @@ function buildInitial(dominios) {
         nome: "",
         tipo: TIPOS_INSTRUMENTO[0],
         data: "",
-        questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "" }],
+        questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
     };
 }
 
-export default function Instrumentos({ insts, dominios, addInstrumento, updateInstrumento, delInstrumento, onClassify }) {
+export default function Instrumentos({ insts, dominios, competencias = [], addInstrumento, updateInstrumento, delInstrumento, onClassify }) {
     const [editing, setEditing] = useState(null); // null | 'new' | inst_id
     const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
@@ -28,7 +28,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
             nome: inst.nome,
             tipo: inst.tipo,
             data: inst.data || "",
-            questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao) })),
+            questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao), comp: q.comp || "" })),
         });
         setEditing(inst.id);
         setError("");
@@ -43,7 +43,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
     function addQ() {
         setForm((f) => ({
             ...f,
-            questoes: [...f.questoes, { id: "", dom: dominios[0]?.code || "", cotacao: "" }],
+            questoes: [...f.questoes, { id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
         }));
     }
     function removeQ(idx) {
@@ -59,7 +59,12 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
         if (!form.nome.trim()) { setError("Indique um nome."); return; }
         const qs = form.questoes
             .filter((q) => q.id.trim() && q.cotacao !== "" && !Number.isNaN(parseFloat(q.cotacao)))
-            .map((q) => ({ id: q.id.trim(), dom: q.dom, cotacao: parseFloat(q.cotacao) }));
+            .map((q) => ({
+                id: q.id.trim(),
+                dom: q.dom,
+                cotacao: parseFloat(q.cotacao),
+                comp: q.comp || null,
+            }));
         if (!qs.length) { setError("Adicione pelo menos uma questão com identificador e cotação."); return; }
         // Guard against duplicate question IDs within the same instrument
         const ids = qs.map((q) => q.id);
@@ -147,7 +152,7 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                         </div>
                         <div className="space-y-2">
                             {form.questoes.map((q, i) => (
-                                <div key={i} className="flex items-center gap-2">
+                                <div key={i} className="flex items-center gap-2 flex-wrap">
                                     <span className="text-xs font-mono text-brand-sage w-6 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                                     <input data-testid={`q-id-${i}`} className="input-forest w-32" placeholder="Identificador" value={q.id} onChange={(e) => updateQ(i, "id", e.target.value)} />
                                     <select
@@ -160,6 +165,20 @@ export default function Instrumentos({ insts, dominios, addInstrumento, updateIn
                                         {dominios.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
                                     </select>
                                     <input data-testid={`q-cot-${i}`} type="number" step="0.1" className="input-forest w-24" placeholder="Pts" value={q.cotacao} onChange={(e) => updateQ(i, "cotacao", e.target.value)} />
+                                    {competencias.length > 0 && (
+                                        <select
+                                            data-testid={`q-comp-${i}`}
+                                            className="input-forest flex-1 min-w-[220px] text-xs"
+                                            value={q.comp || ""}
+                                            onChange={(e) => updateQ(i, "comp", e.target.value)}
+                                            title="Competência essencial"
+                                        >
+                                            <option value="">— Competência —</option>
+                                            {competencias.map((c) => (
+                                                <option key={c.code} value={c.code}>{c.code} · {c.nome.length > 60 ? c.nome.slice(0, 57) + "…" : c.nome}</option>
+                                            ))}
+                                        </select>
+                                    )}
                                     <button type="button" onClick={() => removeQ(i)} className="btn-danger-ghost" disabled={form.questoes.length === 1}>
                                         <X size={14} />
                                     </button>
