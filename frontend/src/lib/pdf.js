@@ -122,30 +122,26 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
         return;
     }
 
-    // Legend of competências
+    // Legend header + table below
     doc.setFontSize(9);
     doc.setTextColor(90, 100, 100);
     doc.setFont("helvetica", "bold");
-    doc.text("Competências avaliadas neste instrumento:", 40, 88);
+    doc.text("Desempenho por competência (percentagem obtida por cada aluno):", 40, 88);
     doc.setFont("helvetica", "normal");
-    const lines = compsInInstrumento.map((code) => {
+    const startY = 102;
+
+    // Table: rows = competências, cols = "Competência" + alunos + Média
+    const alunoHeaders = alunos.map((a) => a.nome);
+    const head = [["#", "Competência", ...alunoHeaders, "Média"]];
+
+    const cellStyles = {}; // { rowIdx: { colIdx: styles } }
+    const body = compsInInstrumento.map((code, rowIdx) => {
         const c = compByCode[code];
-        return `  • ${code} — ${c?.nome || "(descritor em falta)"}`;
-    });
-    const legend = doc.splitTextToSize(lines.join("\n"), doc.internal.pageSize.getWidth() - 80);
-    doc.text(legend, 40, 102);
-    const startY = 102 + legend.length * 10 + 12;
-
-    // Table: rows = alunos, cols = comp codes + "Global"
-    const head = [["#", "Aluno", ...compsInInstrumento, "Global"]];
-
-    // Compute value + flag <60 for cell styling
-    const cellStyles = {}; // {rowIdx: {colIdx: {fillColor}}}
-    const body = alunos.map((a, i) => {
-        const row = [String(i + 1).padStart(2, "0"), a.nome];
-        cellStyles[i] = {};
-        compsInInstrumento.forEach((code, j) => {
-            // subset instrument questoes to this comp
+        cellStyles[rowIdx] = {};
+        const label = c?.nome || "(descritor em falta)";
+        const row = [String(rowIdx + 1).padStart(2, "0"), label];
+        const values = [];
+        alunos.forEach((a, colOffset) => {
             const qs = (instrumento.questoes || []).filter((q) => q.comp === code);
             const notas = (instrumento.notas || {})[a.id] || {};
             const totCot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);
@@ -156,34 +152,37 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
                 pct = (weighted / totCot) * 100;
             }
             row.push(pct != null ? pct.toFixed(1) + "%" : "—");
-            // Column index in body: j + 2 (after # and Aluno)
+            if (pct != null) values.push(pct);
+            // Column index in body: 2 + colOffset (after # and Competência)
             if (pct != null && pct < 60) {
-                cellStyles[i][j + 2] = { fillColor: [252, 218, 210], textColor: [138, 26, 26], fontStyle: "bold" };
+                cellStyles[rowIdx][2 + colOffset] = { fillColor: [252, 218, 210], textColor: [138, 26, 26], fontStyle: "bold" };
             }
         });
-        // Global for this instrumento
-        const totCot = instrumento.questoes.reduce((s, q) => s + Number(q.cotacao || 0), 0);
-        const notas = (instrumento.notas || {})[a.id] || {};
-        const anyNota = instrumento.questoes.some((q) => notas[q.id] != null && notas[q.id] !== "");
-        let global = null;
-        if (totCot > 0 && anyNota) {
-            const w = instrumento.questoes.reduce((s, q) => s + (Number(notas[q.id] || 0) / NOTA_MAX) * Number(q.cotacao || 0), 0);
-            global = (w / totCot) * 100;
-        }
-        row.push(global != null ? global.toFixed(1) + "%" : "—");
+        // Média row (average of students that have any note)
+        const avg = values.length ? (values.reduce((s, v) => s + v, 0) / values.length) : null;
+        row.push(avg != null ? avg.toFixed(1) + "%" : "—");
         return row;
     });
+
+    // Column widths: fit content
+    const numAlunoCols = alunos.length;
+    const alunoColWidth = Math.max(48, Math.min(90, Math.floor((doc.internal.pageSize.getWidth() - 80 - 30 - 200 - 60) / Math.max(1, numAlunoCols))));
+    const columnStyles = {
+        0: { cellWidth: 26, halign: "center" },
+        1: { cellWidth: 200 },
+    };
+    for (let i = 0; i < numAlunoCols; i++) {
+        columnStyles[2 + i] = { cellWidth: alunoColWidth, halign: "center" };
+    }
+    columnStyles[2 + numAlunoCols] = { cellWidth: 55, halign: "center", fontStyle: "bold" };
 
     autoTable(doc, {
         head, body, startY,
         theme: "grid",
-        styles: { font: "helvetica", fontSize: 9, textColor: [44, 62, 53], lineColor: [229, 227, 219], lineWidth: 0.5, cellPadding: 6 },
-        headStyles: { fillColor: [44, 74, 59], textColor: [249, 248, 246], fontStyle: "bold", fontSize: 9 },
+        styles: { font: "helvetica", fontSize: 8.5, textColor: [44, 62, 53], lineColor: [229, 227, 219], lineWidth: 0.5, cellPadding: 5, overflow: "linebreak" },
+        headStyles: { fillColor: [44, 74, 59], textColor: [249, 248, 246], fontStyle: "bold", fontSize: 8.5, halign: "center" },
         alternateRowStyles: { fillColor: [249, 248, 246] },
-        columnStyles: {
-            0: { cellWidth: 26, halign: "center" },
-            1: { cellWidth: 160 },
-        },
+        columnStyles,
         didParseCell(data) {
             if (data.section !== "body") return;
             const cs = cellStyles[data.row.index]?.[data.column.index];
@@ -217,8 +216,9 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
             }
         });
         const avg = total ? (sum / total).toFixed(1) : "—";
+        const label = (compByCode[code]?.nome || "(descritor)").slice(0, 80);
         doc.text(
-            `• ${code} — média ${avg}%  |  ${low}/${total} aluno(s) abaixo de 60%`,
+            `• ${label} — média ${avg}%  |  ${low}/${total} aluno(s) abaixo de 60%`,
             40, y, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
         );
         y += 12;

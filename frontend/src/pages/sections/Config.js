@@ -132,20 +132,28 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
 
     function update(i, key, val) { setItems((s) => s.map((c, idx) => (idx === i ? { ...c, [key]: val } : c))); }
     function add() {
-        let n = items.length + 1;
-        let code;
-        do { code = `AE${n}`; n++; } while (items.some((c) => c.code === code));
-        setItems((s) => [...s, { code, nome: "" }]);
+        setItems((s) => [...s, { code: "", nome: "" }]);
     }
     function remove(i) { setItems((s) => s.filter((_, idx) => idx !== i)); }
 
     async function save() {
         setError(""); setBusy(true);
         try {
-            await saveCompetencias(items.map((c) => ({
-                code: (c.code || "").trim().toUpperCase(),
-                nome: (c.nome || "").trim(),
-            })));
+            // Auto-assign missing codes; keep existing ones.
+            const usedCodes = new Set(items.map((c) => (c.code || "").trim()).filter(Boolean));
+            let counter = 1;
+            const withCodes = items.map((c) => {
+                let code = (c.code || "").trim();
+                if (!code) {
+                    while (usedCodes.has(`AE${counter}`)) counter++;
+                    code = `AE${counter}`;
+                    usedCodes.add(code);
+                    counter++;
+                }
+                return { code, nome: (c.nome || "").trim() };
+            });
+            await saveCompetencias(withCodes);
+            setItems(withCodes);
             setSaved(true);
             setTimeout(() => setSaved(false), 1500);
         } catch (e) {
@@ -193,27 +201,19 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
                         Ainda não há competências definidas para esta turma.
                     </div>
                 ) : (
-                    <div className="space-y-2" data-testid="comp-list">
+                    <div className="space-y-3" data-testid="comp-list">
                         {items.map((c, i) => (
                             <div key={i} className="flex items-start gap-2" data-testid={`comp-row-${i}`}>
-                                <span className="text-xs font-mono text-brand-sage w-6 mt-2 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                                <input
-                                    data-testid={`comp-code-${i}`}
-                                    className="input-forest font-mono text-sm w-28 mt-0.5"
-                                    value={c.code}
-                                    onChange={(e) => update(i, "code", e.target.value.toUpperCase())}
-                                    maxLength={16}
-                                    placeholder="AE1"
-                                />
+                                <span className="text-xs font-mono text-brand-sage w-8 mt-3 tabular-nums shrink-0">{String(i + 1).padStart(2, "0")}</span>
                                 <textarea
                                     data-testid={`comp-nome-${i}`}
-                                    className="input-forest flex-1 text-sm"
-                                    rows={1}
+                                    className="input-forest flex-1 text-sm leading-relaxed resize-y"
+                                    rows={3}
                                     value={c.nome}
                                     onChange={(e) => update(i, "nome", e.target.value)}
-                                    placeholder="Descritor da competência..."
+                                    placeholder="Descreva a competência essencial..."
                                 />
-                                <button type="button" onClick={() => remove(i)} className="btn-danger-ghost mt-1" title="Remover">
+                                <button type="button" onClick={() => remove(i)} className="btn-danger-ghost mt-2 shrink-0" title="Remover">
                                     <X size={14} />
                                 </button>
                             </div>

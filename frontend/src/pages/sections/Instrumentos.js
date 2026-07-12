@@ -175,7 +175,7 @@ export default function Instrumentos({ insts, dominios, competencias = [], addIn
                                         >
                                             <option value="">— Competência —</option>
                                             {competencias.map((c) => (
-                                                <option key={c.code} value={c.code}>{c.code} · {c.nome.length > 60 ? c.nome.slice(0, 57) + "…" : c.nome}</option>
+                                                <option key={c.code} value={c.code}>{c.nome.length > 80 ? c.nome.slice(0, 77) + "…" : c.nome}</option>
                                             ))}
                                         </select>
                                     )}
