@@ -126,7 +126,7 @@ class TestTurmaConfig:
 
     def test_meta_sucesso_out_of_range(self, turma, th):
         r = requests.put(self.URL(turma["id"]), headers=th, json={"meta_sucesso": 150})
-        assert r.status_code == 422  # Pydantic validation
+        assert r.status_code == 400  # server-side range check
 
 
 # ─── Instrumentos with semestre + OD ─────────────────────────────────────────

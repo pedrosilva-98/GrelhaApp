@@ -16,7 +16,7 @@ export default function Config({
             <SemestresSection turma={turma} saveTurmaConfig={saveTurmaConfig} />
             <MetaSucessoSection turma={turma} saveTurmaConfig={saveTurmaConfig} />
             <DominiosSection dominios={dominios} saveDominios={saveDominios} />
-            <ParametrosODSection turma={turma} dominios={dominios} saveTurmaConfig={saveTurmaConfig} />
+            <ParametrosODSection turma={turma} saveTurmaConfig={saveTurmaConfig} />
             <CompetenciasSection competencias={competencias || []} saveAprendizagems={saveAprendizagems} />
         </div>
     );
@@ -268,7 +268,7 @@ function DominiosSection({ dominios, saveDominios }) {
 }
 
 // ─── Parâmetros Observação Direta ────────────────────────────────────────────
-function ParametrosODSection({ turma, dominios, saveTurmaConfig }) {
+function ParametrosODSection({ turma, saveTurmaConfig }) {
     const [items, setItems] = useState(turma?.parametros_od || []);
     const [busy, setBusy] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -281,7 +281,7 @@ function ParametrosODSection({ turma, dominios, saveTurmaConfig }) {
 
     function update(i, key, val) { setItems((s) => s.map((p, idx) => (idx === i ? { ...p, [key]: val } : p))); }
     function add() {
-        setItems((s) => [...s, { id: `P${Date.now().toString(36)}${s.length}`, nome: "", dom: dominios[0]?.code || "" }]);
+        setItems((s) => [...s, { id: `P${Date.now().toString(36)}${s.length}`, nome: "" }]);
     }
     function remove(i) { setItems((s) => s.filter((_, idx) => idx !== i)); }
 
@@ -292,7 +292,7 @@ function ParametrosODSection({ turma, dominios, saveTurmaConfig }) {
                 parametros_od: items.map((p) => ({
                     id: (p.id || `P${Date.now().toString(36)}`).trim(),
                     nome: (p.nome || "").trim(),
-                    dom: p.dom || null,
+                    dom: null,
                 })),
             });
             setSaved(true);
@@ -305,11 +305,11 @@ function ParametrosODSection({ turma, dominios, saveTurmaConfig }) {
     return (
         <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                <ListChecks size={12} /> Trabalhos individuais ou de grupo
+                <ListChecks size={12} /> Rubrica
             </div>
             <h2 className="font-serif text-xl text-brand-forest mb-2">Parâmetros de Observação Direta</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
-                Configure os parâmetros a avaliar em trabalhos individuais ou de grupo (Observação Direta). Ao criar um instrumento, poderá atribuir uma nota 0–10 a cada parâmetro e um domínio associado.
+                Configure os parâmetros a avaliar por observação direta. Estes parâmetros aparecerão na página <strong>Instrumentos de avaliação</strong> para lhes atribuir uma nota 0–10 por aluno e escolher o domínio correspondente.
             </p>
 
             <div className="card-surface p-6 space-y-4">
@@ -329,16 +329,6 @@ function ParametrosODSection({ turma, dominios, saveTurmaConfig }) {
                                     onChange={(e) => update(i, "nome", e.target.value)}
                                     placeholder="Ex: Participação, Cooperação, Autonomia..."
                                 />
-                                <select
-                                    data-testid={`param-dom-${i}`}
-                                    className="input-forest w-28 text-xs"
-                                    value={p.dom || ""}
-                                    onChange={(e) => update(i, "dom", e.target.value)}
-                                    title="Domínio associado (por defeito)"
-                                >
-                                    <option value="">—</option>
-                                    {dominios.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
-                                </select>
                                 <button type="button" onClick={() => remove(i)} className="btn-danger-ghost shrink-0" title="Remover">
                                     <X size={14} />
                                 </button>

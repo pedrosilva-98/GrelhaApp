@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 8 fully validated. Backend: 11/11 new pytest cases pass (test_iteration8_od_bulk.py) covering the new `{alunos:[…]}` bulk shape (with empty-name skip + backwards-compat with `nomes`) and the new PUT /api/turmas/{tid}/od/{param_id} endpoint (dom/notas/semestre + all 4 validation branches + null-nota clears + 0→null semestre pattern). All 28 pre-existing tests (iteration6/7 regressions) still green. Frontend Playwright run against phase2test@teste.pt/Matemática 7A confirmed: (1) Config → Parâmetros OD row has 0 <select> elements and 1 <input>; 'Trabalhos individuais ou de grupo' subtitle is gone. (2) Instrumentos view exposes a dedicated OD panel (data-testid od-panel, 1 row for Participação showing dom=CP badge and 1/3 notas count) and the new-instrument form no longer contains an 'Observação Direta' section. (3) ODClassifModal opens with dom=CP + sem=1 pre-filled from seeded od_avaliacoes.P1, lists 3 aluno nota inputs, saves and closes. (4) Turma Import modal is titled 'Alunos a partir de Excel/CSV', pastes 3-line CSV → preview correctly shows 2 aluno(s) (empty-name row skipped), Portuguese DD/MM/YYYY '10/05/2012' → '2012-05-10', import bulk succeeds and TEST_Pedro/TEST_Maria appear in table. Resumo card shows Ana Silva CP=85% confirming od_avaliacoes contributes to domain averages (8.5 → 85%).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Turma → header button", "issues": ["Button label still reads 'Importar CSV' although modal now accepts Excel/xlsx too. Consider 'Importar Excel/CSV' for consistency with modal title."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_od_bulk.py",
+    "/app/test_reports/pytest/iteration8.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Rename Turma page 'Importar CSV' button label to 'Importar Excel/CSV' to match new modal title/accepted formats.",
+    "(Minor) ODAvaliacaoUpdate: sending `semestre: null` in JSON does not reach the branch (Pydantic None skips the `is not None` guard). The current workaround is to send `semestre: 0` to clear it — the frontend already does exactly that (`semestre: semestre ? parseInt(semestre) : 0`). If explicit-null semantics are desired, add a sentinel or `model_dump(exclude_unset=True)` handling."
+  ],
+  "critical_code_review_comments": [
+    "PUT /api/turmas/{id}/od/{pid}: semestre=0 is used as the sentinel to clear (`current['semestre'] = body.semestre or None`). Works, but slightly implicit; document or replace with an explicit `clear_semestre` flag.",
+    "Instrumentos.js still imports/expects `saveODAvaliacao` prop and `parametrosOD` — both wired in Teacher.js. The old instrument.observacao_direta field is no longer being written on new instruments (POST payload dropped it), but the backend still accepts + validates it (dead code path). Safe to leave for backwards-compat but flag for future cleanup.",
+    "Turma.js `toIsoDate` handles Excel numeric serials and DD/MM/YYYY correctly. Minor: 2-digit-year threshold hard-coded as >50 → 19xx, ≤50 → 20xx; document or expose.",
+    "ImportCSVModal: after successful import, calls setTimeout(onClose, 1200) but does not reset `done/xlsxRows/text`. Not a bug — modal is unmounted on close — but if reused elsewhere the leftover state could bite."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_od_bulk.py (new, 11 tests)",
+    "/app/backend/tests/test_iteration6_phase2.py (fixed stale 422→400 assertion in test_meta_sucesso_out_of_range)"
+  ],
+  "success_rate": {"backend": "100% (11/11 new + 28/28 regressions across iterations 6+7)", "frontend": "100% – all 4 refactor areas verified visually and via data-testids"},
+  "test_credentials": "Admin: passilva2005@gmail.com / !grelhaadmin2005!  |  Teacher: phase2test@teste.pt / teste123 (turma Matemática 7A, seeded param P1 Participação dom=CP notas.Ana=8.5)",
+  "seed_data_creation": "Backend tests create an ephemeral teacher per session (phase4_it8_*@teste.pt) with turma+alunos, cleaned up on teardown. Frontend playwright added 2 TEST_ alunos (Pedro Silva, Maria Costa) to the phase2test turma via the import flow; DELETE returned 403 in my curl cleanup attempt (I likely picked wrong turma index) — the 2 rows remain and are visible as TEST_-prefixed rows for manual removal if needed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New pytest file /app/backend/tests/test_iteration8_od_bulk.py. Frontend data-testids in play: param-nome-{i}, param-add-btn, param-save-btn, param-row-{i}, od-panel, od-list, od-row-{param_id}, od-classif-{param_id}, od-modal, od-modal-dom, od-modal-sem, od-nota-{aluno_id}, od-modal-save, csv-file-btn, csv-file-input, csv-textarea, csv-preview-count, csv-import-submit, import-preview. Playwright can drive the CSV textarea directly with pasted CSV to exercise the parser without uploading an actual .xlsx (SheetJS branch is only exercised by real file upload). Note: Turma header button still reads 'Importar CSV' although modal accepts .xlsx."
+}

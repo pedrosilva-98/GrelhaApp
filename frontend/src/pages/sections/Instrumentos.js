@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save } from "lucide-react";
 import { TIPOS_INSTRUMENTO, domColor } from "@/lib/grelha";
 
 function buildInitial(dominios) {
@@ -9,94 +9,49 @@ function buildInitial(dominios) {
         data: "",
         semestre: "",
         questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
-        observacao_direta: [],
     };
 }
 
-function fromInst(inst, parametrosOD, dominios) {
-    // Seed OD from turma parameters if instrument has no OD saved yet
-    const currentOD = inst.observacao_direta || [];
-    const byId = Object.fromEntries(currentOD.map((o) => [o.parametro_id, o]));
-    const merged = (parametrosOD || []).map((p) => {
-        const existing = byId[p.id];
-        return {
-            parametro_id: p.id,
-            nome: p.nome,
-            dom: existing?.dom || p.dom || dominios[0]?.code || "",
-            nota: existing?.nota != null ? String(existing.nota) : "",
-        };
-    });
+function fromInst(inst) {
     return {
         nome: inst.nome,
         tipo: inst.tipo,
         data: inst.data || "",
         semestre: inst.semestre != null ? String(inst.semestre) : "",
         questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao), comp: q.comp || "" })),
-        observacao_direta: merged,
     };
-}
-
-function buildInitialWithOD(dominios, parametrosOD) {
-    const base = buildInitial(dominios);
-    base.observacao_direta = (parametrosOD || []).map((p) => ({
-        parametro_id: p.id,
-        nome: p.nome,
-        dom: p.dom || dominios[0]?.code || "",
-        nota: "",
-    }));
-    return base;
 }
 
 export default function Instrumentos({
     turma,
     insts,
+    alunos = [],
     dominios,
     competencias = [],
     parametrosOD = [],
     addInstrumento,
     updateInstrumento,
     delInstrumento,
+    saveODAvaliacao,
     onClassify,
     onExportRelatorio,
 }) {
     const [editing, setEditing] = useState(null); // null | 'new' | inst_id
-    const [form, setForm] = useState(buildInitialWithOD(dominios, parametrosOD));
+    const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
+    const [odClassifying, setOdClassifying] = useState(null); // parametro object
 
-    function openNew() {
-        setForm(buildInitialWithOD(dominios, parametrosOD));
-        setEditing("new");
-        setError("");
-    }
-
-    function openEdit(inst) {
-        setForm(fromInst(inst, parametrosOD, dominios));
-        setEditing(inst.id);
-        setError("");
-    }
-
-    function close() {
-        setEditing(null);
-        setForm(buildInitialWithOD(dominios, parametrosOD));
-        setError("");
-    }
+    function openNew() { setForm(buildInitial(dominios)); setEditing("new"); setError(""); }
+    function openEdit(inst) { setForm(fromInst(inst)); setEditing(inst.id); setError(""); }
+    function close() { setEditing(null); setForm(buildInitial(dominios)); setError(""); }
 
     function addQ() {
-        setForm((f) => ({
-            ...f,
-            questoes: [...f.questoes, { id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
-        }));
+        setForm((f) => ({ ...f, questoes: [...f.questoes, { id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }] }));
     }
-    function removeQ(idx) {
-        setForm((f) => ({ ...f, questoes: f.questoes.filter((_, i) => i !== idx) }));
-    }
+    function removeQ(idx) { setForm((f) => ({ ...f, questoes: f.questoes.filter((_, i) => i !== idx) })); }
     function updateQ(idx, k, v) {
         setForm((f) => ({ ...f, questoes: f.questoes.map((q, i) => (i === idx ? { ...q, [k]: v } : q)) }));
-    }
-
-    function updateOD(idx, k, v) {
-        setForm((f) => ({ ...f, observacao_direta: f.observacao_direta.map((o, i) => (i === idx ? { ...o, [k]: v } : o)) }));
     }
 
     // Semestre date validation (client-side)
@@ -116,30 +71,10 @@ export default function Instrumentos({
         }
         const qs = form.questoes
             .filter((q) => q.id.trim() && q.cotacao !== "" && !Number.isNaN(parseFloat(q.cotacao)))
-            .map((q) => ({
-                id: q.id.trim(),
-                dom: q.dom,
-                cotacao: parseFloat(q.cotacao),
-                comp: q.comp || null,
-            }));
-        if (!qs.length && form.observacao_direta.every((o) => o.nota === "" || o.nota == null)) {
-            setError("Adicione pelo menos uma questão preenchida ou uma nota em Observação Direta.");
-            return;
-        }
+            .map((q) => ({ id: q.id.trim(), dom: q.dom, cotacao: parseFloat(q.cotacao), comp: q.comp || null }));
+        if (!qs.length) { setError("Adicione pelo menos uma questão preenchida."); return; }
         const ids = qs.map((q) => q.id);
         if (new Set(ids).size !== ids.length) { setError("Os identificadores de questão têm de ser únicos."); return; }
-
-        const ods = form.observacao_direta
-            .filter((o) => o.nota !== "" && o.nota != null && !Number.isNaN(parseFloat(o.nota)))
-            .map((o) => ({
-                parametro_id: o.parametro_id,
-                dom: o.dom,
-                nota: parseFloat(o.nota),
-            }));
-        for (const o of ods) {
-            if (o.nota < 0 || o.nota > 10) { setError("Notas de Observação Direta devem estar entre 0 e 10."); return; }
-        }
-
         setBusy(true);
         try {
             const payload = {
@@ -148,22 +83,18 @@ export default function Instrumentos({
                 data: form.data,
                 semestre: form.semestre ? parseInt(form.semestre) : null,
                 questoes: qs,
-                observacao_direta: ods,
             };
             if (editing === "new") await addInstrumento(payload);
             else await updateInstrumento(editing, payload);
             close();
         } catch (err) {
             setError(err?.response?.data?.detail || err.message || "Erro ao guardar.");
-        } finally {
-            setBusy(false);
-        }
+        } finally { setBusy(false); }
     }
 
     const totalCot = form.questoes.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0);
     const domByCode = Object.fromEntries(dominios.map((d, i) => [d.code, { ...d, color: domColor(i) }]));
 
-    // Format ISO date "YYYY-MM-DD" to "DD/MM/YYYY" for display
     function fmtDate(iso) {
         if (!iso) return "—";
         const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -172,7 +103,7 @@ export default function Instrumentos({
     }
 
     return (
-        <div className="space-y-6 anim-in" data-testid="instrumentos-view">
+        <div className="space-y-8 anim-in" data-testid="instrumentos-view">
             <div className="flex items-center justify-between">
                 <div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Avaliação</div>
@@ -238,20 +169,15 @@ export default function Instrumentos({
                         </div>
                     )}
 
-                    {/* Questões — vertical stacked layout */}
                     <div>
                         <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-3">
                             Questões · Total: <span className="text-brand-forest">{totalCot.toFixed(1)} pts</span>
                         </div>
                         <div className="space-y-4">
                             {form.questoes.map((q, i) => {
-                                const empty = !q.id.trim() && !q.cotacao && !q.dom;
+                                const empty = !q.id.trim() && !q.cotacao;
                                 return (
-                                    <div
-                                        key={i}
-                                        className={`border border-crisp rounded-md p-4 space-y-3 transition-opacity ${empty ? "opacity-60 bg-page/60" : "bg-surface"}`}
-                                        data-testid={`q-card-${i}`}
-                                    >
+                                    <div key={i} className={`border border-crisp rounded-md p-4 space-y-3 transition-opacity ${empty ? "opacity-60 bg-page/60" : "bg-surface"}`} data-testid={`q-card-${i}`}>
                                         <div className="flex items-center justify-between">
                                             <span className="text-[11px] uppercase tracking-[0.2em] text-brand-sage">Questão {String(i + 1).padStart(2, "0")}</span>
                                             <button type="button" onClick={() => removeQ(i)} className="btn-danger-ghost" disabled={form.questoes.length === 1} title="Remover questão">
@@ -265,13 +191,7 @@ export default function Instrumentos({
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Domínio</label>
-                                                <select
-                                                    data-testid={`q-dom-${i}`}
-                                                    className="input-forest"
-                                                    value={q.dom}
-                                                    onChange={(e) => updateQ(i, "dom", e.target.value)}
-                                                    style={{ color: domByCode[q.dom]?.color }}
-                                                >
+                                                <select data-testid={`q-dom-${i}`} className="input-forest" value={q.dom} onChange={(e) => updateQ(i, "dom", e.target.value)} style={{ color: domByCode[q.dom]?.color }}>
                                                     {dominios.map((d) => <option key={d.code} value={d.code}>{`${d.code} — ${d.nome}`}</option>)}
                                                 </select>
                                             </div>
@@ -283,12 +203,7 @@ export default function Instrumentos({
                                         <div>
                                             <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Aprendizagem essencial</label>
                                             {competencias.length > 0 ? (
-                                                <select
-                                                    data-testid={`q-comp-${i}`}
-                                                    className="input-forest text-sm"
-                                                    value={q.comp || ""}
-                                                    onChange={(e) => updateQ(i, "comp", e.target.value)}
-                                                >
+                                                <select data-testid={`q-comp-${i}`} className="input-forest text-sm" value={q.comp || ""} onChange={(e) => updateQ(i, "comp", e.target.value)}>
                                                     <option value="">— Sem aprendizagem associada —</option>
                                                     {competencias.map((c) => (
                                                         <option key={c.code} value={c.code}>{c.nome.length > 120 ? c.nome.slice(0, 117) + "…" : c.nome}</option>
@@ -308,52 +223,6 @@ export default function Instrumentos({
                             <Plus size={14} /> Adicionar questão
                         </button>
                     </div>
-
-                    {/* Observação Direta */}
-                    {parametrosOD.length > 0 && (
-                        <div className="border-t border-crisp pt-5" data-testid="od-section">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                                <Sparkles size={12} /> Trabalhos individuais ou de grupo
-                            </div>
-                            <h3 className="font-serif text-lg text-brand-forest mb-1">Observação Direta</h3>
-                            <p className="text-sm text-brand-charcoal/70 mb-4">Atribua uma nota 0–10 a cada parâmetro. Escolha o domínio ao qual contribui.</p>
-                            <div className="space-y-3">
-                                {form.observacao_direta.map((o, i) => (
-                                    <div key={o.parametro_id} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_110px] gap-3 items-end" data-testid={`od-row-${i}`}>
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Parâmetro</label>
-                                            <div className="input-forest bg-page text-sm">{o.nome}</div>
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Domínio</label>
-                                            <select
-                                                data-testid={`od-dom-${i}`}
-                                                className="input-forest"
-                                                value={o.dom}
-                                                onChange={(e) => updateOD(i, "dom", e.target.value)}
-                                            >
-                                                {dominios.map((d) => <option key={d.code} value={d.code}>{d.code}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nota (0–10)</label>
-                                            <input
-                                                data-testid={`od-nota-${i}`}
-                                                type="number"
-                                                step="0.1"
-                                                min={0}
-                                                max={10}
-                                                className="input-forest"
-                                                value={o.nota}
-                                                onChange={(e) => updateOD(i, "nota", e.target.value)}
-                                                placeholder="—"
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
 
                     {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
 
@@ -394,20 +263,10 @@ export default function Instrumentos({
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.questoes.reduce((s, q) => s + Number(q.cotacao), 0).toFixed(1)}</td>
                                 <td className="px-5 py-3 text-right">
                                     <div className="flex justify-end gap-1 flex-wrap">
-                                        <button
-                                            data-testid={`classif-inst-${inst.id}`}
-                                            onClick={() => onClassify && onClassify(inst.id)}
-                                            className="btn-primary !px-3 !py-1.5 text-xs"
-                                            title="Abrir classificações"
-                                        >
+                                        <button data-testid={`classif-inst-${inst.id}`} onClick={() => onClassify && onClassify(inst.id)} className="btn-primary !px-3 !py-1.5 text-xs" title="Abrir classificações">
                                             <ClipboardCheck size={13} /> Classificações
                                         </button>
-                                        <button
-                                            data-testid={`relatorio-inst-${inst.id}`}
-                                            onClick={() => onExportRelatorio && onExportRelatorio(inst)}
-                                            className="btn-ghost !px-2 !py-1.5"
-                                            title="Exportar relatório por aprendizagens (PDF)"
-                                        >
+                                        <button data-testid={`relatorio-inst-${inst.id}`} onClick={() => onExportRelatorio && onExportRelatorio(inst)} className="btn-ghost !px-2 !py-1.5" title="Exportar relatório por aprendizagens (PDF)">
                                             <FileText size={14} />
                                         </button>
                                         <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
@@ -422,6 +281,193 @@ export default function Instrumentos({
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Observação Direta panel — separate section listing each parameter */}
+            {parametrosOD.length > 0 && (
+                <div data-testid="od-panel">
+                    <div className="flex items-baseline justify-between mb-3">
+                        <div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
+                                <Sparkles size={12} /> Rubrica
+                            </div>
+                            <h2 className="font-serif text-xl text-brand-forest">Observação Direta</h2>
+                        </div>
+                        <div className="text-xs text-brand-charcoal/60">{parametrosOD.length} parâmetro(s) · {alunos.length} aluno(s)</div>
+                    </div>
+                    <div className="card-surface overflow-hidden">
+                        <table className="w-full text-sm">
+                            <thead className="bg-page border-b border-crisp">
+                                <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
+                                    <th className="px-5 py-2.5 font-semibold">Parâmetro</th>
+                                    <th className="px-5 py-2.5 font-semibold w-32">Domínio</th>
+                                    <th className="px-5 py-2.5 font-semibold w-24 text-right">Notas</th>
+                                    <th className="px-5 py-2.5 font-semibold w-36 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody data-testid="od-list">
+                                {parametrosOD.map((p, i) => {
+                                    const entry = (turma?.od_avaliacoes || {})[p.id] || {};
+                                    const notasCount = Object.keys(entry.notas || {}).length;
+                                    const dom = entry.dom || null;
+                                    const domIdx = dominios.findIndex((d) => d.code === dom);
+                                    return (
+                                        <tr key={p.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`} data-testid={`od-row-${p.id}`}>
+                                            <td className="px-5 py-3 font-medium text-brand-charcoal">{p.nome}</td>
+                                            <td className="px-5 py-3">
+                                                {dom ? (
+                                                    <span className="text-[11px] px-2 py-0.5 rounded-full font-mono" style={{ background: domColor(domIdx) + "22", color: domColor(domIdx) }}>{dom}</span>
+                                                ) : <span className="text-brand-sage text-xs">—</span>}
+                                            </td>
+                                            <td className="px-5 py-3 text-right tabular-nums font-mono text-xs text-brand-charcoal/70">{notasCount} / {alunos.length}</td>
+                                            <td className="px-5 py-3 text-right">
+                                                <button data-testid={`od-classif-${p.id}`} onClick={() => setOdClassifying(p)} className="btn-primary !px-3 !py-1.5 text-xs">
+                                                    <ClipboardCheck size={13} /> Classificar
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {odClassifying && (
+                <ODClassifModal
+                    parametro={odClassifying}
+                    entry={(turma?.od_avaliacoes || {})[odClassifying.id] || {}}
+                    dominios={dominios}
+                    alunos={alunos}
+                    onClose={() => setOdClassifying(null)}
+                    onSave={async (payload) => {
+                        await saveODAvaliacao(odClassifying.id, payload);
+                    }}
+                />
+            )}
+        </div>
+    );
+}
+
+// ─── Modal to grade one OD parameter across all alunos ───────────────────────
+function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave }) {
+    const [dom, setDom] = useState(entry.dom || dominios[0]?.code || "");
+    const [semestre, setSemestre] = useState(entry.semestre != null ? String(entry.semestre) : "");
+    const initialNotas = useMemo(() => {
+        const n = {};
+        for (const a of alunos) n[a.id] = entry.notas?.[a.id] != null ? String(entry.notas[a.id]) : "";
+        return n;
+    }, [alunos, entry.notas]);
+    const [notas, setNotas] = useState(initialNotas);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => { setNotas(initialNotas); }, [initialNotas]);
+
+    // Any invalid nota
+    const invalid = Object.values(notas).some((v) => {
+        if (v === "" || v == null) return false;
+        const n = Number(v);
+        return Number.isNaN(n) || n < 0 || n > 10;
+    });
+
+    function updateNota(id, val) {
+        setNotas((s) => ({ ...s, [id]: val }));
+    }
+
+    async function save() {
+        setError(""); setBusy(true);
+        try {
+            const cleaned = {};
+            for (const [id, v] of Object.entries(notas)) {
+                cleaned[id] = v === "" || v == null ? null : Number(v);
+            }
+            await onSave({ dom, semestre: semestre ? parseInt(semestre) : 0, notas: cleaned });
+            setSaved(true);
+            setTimeout(onClose, 900);
+        } catch (e) {
+            setError(e?.response?.data?.detail || e.message || "Erro ao guardar.");
+        } finally { setBusy(false); }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="card-surface w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden anim-in" onClick={(e) => e.stopPropagation()} data-testid="od-modal">
+                <div className="p-6 border-b border-crisp">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
+                                <Sparkles size={12} /> Observação Direta
+                            </div>
+                            <h2 className="font-serif text-xl text-brand-forest">{parametro.nome}</h2>
+                        </div>
+                        <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Domínio</label>
+                            <select data-testid="od-modal-dom" className="input-forest" value={dom} onChange={(e) => setDom(e.target.value)}>
+                                {dominios.map((d) => <option key={d.code} value={d.code}>{`${d.code} — ${d.nome}`}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Semestre (opcional)</label>
+                            <select data-testid="od-modal-sem" className="input-forest" value={semestre} onChange={(e) => setSemestre(e.target.value)}>
+                                <option value="">Ambos</option>
+                                <option value="1">1º Semestre</option>
+                                <option value="2">2º Semestre</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3">
+                    {alunos.length === 0 ? (
+                        <div className="text-center text-brand-sage py-10 text-sm">Sem alunos na turma.</div>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead className="bg-page border-b border-crisp sticky top-0">
+                                <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
+                                    <th className="px-3 py-2 font-semibold">Aluno</th>
+                                    <th className="px-3 py-2 font-semibold w-24 text-right">Nota (0–10)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {alunos.map((a, i) => (
+                                    <tr key={a.id} className={`border-b border-crisp last:border-0 ${i % 2 === 1 ? "bg-page/40" : ""}`}>
+                                        <td className="px-3 py-1.5 text-brand-charcoal">{a.nome}</td>
+                                        <td className="px-3 py-1.5 text-right">
+                                            <input
+                                                data-testid={`od-nota-${a.id}`}
+                                                type="number"
+                                                step="0.1"
+                                                min={0}
+                                                max={10}
+                                                className="input-forest w-20 text-right tabular-nums font-mono text-sm"
+                                                value={notas[a.id] ?? ""}
+                                                onChange={(e) => updateNota(a.id, e.target.value)}
+                                                placeholder="—"
+                                            />
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-crisp flex items-center gap-3 justify-end bg-surface">
+                    {error && <span className="text-sm text-[#9E3921] mr-auto">{error}</span>}
+                    <button onClick={onClose} className="btn-ghost">Cancelar</button>
+                    <button data-testid="od-modal-save" onClick={save} disabled={busy || invalid} className="btn-primary">
+                        <Save size={15} />
+                        {saved ? "Guardado ✓" : busy ? "A guardar..." : "Guardar"}
+                    </button>
+                </div>
             </div>
         </div>
     );

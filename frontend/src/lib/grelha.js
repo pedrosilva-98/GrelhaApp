@@ -44,6 +44,23 @@ export function filterBySemestre(insts, sem, turma) {
     });
 }
 
+// Extract OD entries relevant to a domain for an aluno (with optional semestre filter).
+// Returns array of {parametro_id, dom, semestre, nota (0-10)}.
+export function odEntriesForAlunoInDom(turma, alunoId, domCode, sem) {
+    const oda = turma?.od_avaliacoes || {};
+    const out = [];
+    for (const [pid, entry] of Object.entries(oda)) {
+        if (!entry || entry.dom !== domCode) continue;
+        if (sem && entry.semestre && entry.semestre !== sem) continue;
+        const nota = entry.notas?.[alunoId];
+        if (nota == null || nota === "") continue;
+        const n = Number(nota);
+        if (Number.isNaN(n)) continue;
+        out.push({ parametro_id: pid, dom: entry.dom, semestre: entry.semestre || null, nota: n });
+    }
+    return out;
+}
+
 export function getNivel(v) {
     if (v == null || Number.isNaN(v)) return null;
     return NIVEIS.find((x) => v >= x.min) || NIVEIS[NIVEIS.length - 1];
@@ -90,8 +107,10 @@ export function calcDominioInstrumento(instrumento, alunoId, domCode) {
     return (weighted / tot) * 100;
 }
 
-// Domain-level averages across all instruments for an aluno
-export function calcMediasDominioAluno(insts, alunoId, dominios) {
+// Domain-level averages across all instruments (and turma OD) for an aluno.
+// Optional 4th arg `turma` includes OD contributions from `turma.od_avaliacoes`.
+// Optional 5th arg `sem` filters OD entries (1 or 2) — instruments filtering must be done by the caller.
+export function calcMediasDominioAluno(insts, alunoId, dominios, turma, sem) {
     const out = {};
     for (const d of dominios) {
         const vals = [];
@@ -99,14 +118,20 @@ export function calcMediasDominioAluno(insts, alunoId, dominios) {
             const v = calcDominioInstrumento(inst, alunoId, d.code);
             if (v != null) vals.push(v);
         }
+        // Add OD entries as one value each (nota/10*100)
+        if (turma) {
+            for (const od of odEntriesForAlunoInDom(turma, alunoId, d.code, sem)) {
+                vals.push((od.nota / NOTA_MAX) * 100);
+            }
+        }
         out[d.code] = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
     }
     return out;
 }
 
 // Weighted final for an aluno using dominios (each dominio has peso)
-export function calcMediaFinal(insts, dominios, alunoId) {
-    const doms = calcMediasDominioAluno(insts, alunoId, dominios);
+export function calcMediaFinal(insts, dominios, alunoId, turma, sem) {
+    const doms = calcMediasDominioAluno(insts, alunoId, dominios, turma, sem);
     let total = 0, totalPond = 0;
     for (const d of dominios) {
         if (doms[d.code] != null && d.peso > 0) {

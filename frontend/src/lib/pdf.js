@@ -33,8 +33,8 @@ export function exportGrelhaPDF({ user, turma, alunos, insts }) {
 
     const head = [["#", "Aluno", ...dominios.map((d) => d.code), "Média", "Nível"]];
     const body = alunos.map((a, i) => {
-        const doms = calcMediasDominioAluno(insts, a.id, dominios);
-        const media = calcMediaFinal(insts, dominios, a.id);
+        const doms = calcMediasDominioAluno(insts, a.id, dominios, turma);
+        const media = calcMediaFinal(insts, dominios, a.id, turma);
         const nivel = getNivel(media);
         return [
             String(i + 1).padStart(2, "0"),
@@ -245,8 +245,8 @@ export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrum
     const dateStr = now.toLocaleDateString("pt-PT");
     const dominios = turma.dominios || [];
 
-    // Domain percentages for this aluno (across ALL instruments, matches Dashboard)
-    const domsPct = calcMediasDominioAluno(insts || [instrumento], aluno.id, dominios);
+    // Domain percentages for this aluno (across ALL instruments + turma OD, matches Dashboard)
+    const domsPct = calcMediasDominioAluno(insts || [instrumento], aluno.id, dominios, turma);
     const domBits = dominios
         .map((d) => (domsPct[d.code] != null ? `${d.code}-${Math.round(domsPct[d.code])}%` : `${d.code}-—`))
         .join(", ");

@@ -149,13 +149,28 @@ export default function Teacher() {
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, ...data } : t)));
     }
 
+    async function saveODAvaliacao(parametroId, payload) {
+        const { data } = await api.put(`/turmas/${turmaId}/od/${parametroId}`, payload);
+        setTurmas((s) => s.map((t) => {
+            if (t.id !== turmaId) return t;
+            const od = { ...(t.od_avaliacoes || {}) };
+            od[parametroId] = { dom: data.dom, semestre: data.semestre, notas: data.notas || {} };
+            return { ...t, od_avaliacoes: od };
+        }));
+        return data;
+    }
+
     async function addAluno(payload) {
         const body = typeof payload === "string" ? { nome: payload } : payload;
         const { data } = await api.post("/alunos", body, { params: { turma_id: turmaId } });
         setAlunos((s) => [...s, data]);
     }
-    async function addAlunosBulk(nomes) {
-        const { data } = await api.post("/alunos/bulk", { nomes }, { params: { turma_id: turmaId } });
+    async function addAlunosBulk(items) {
+        // items may be an array of strings (legacy) or objects {nome, data_nascimento, n_processo}
+        const payload = items.length && typeof items[0] === "object"
+            ? { alunos: items }
+            : { nomes: items };
+        const { data } = await api.post("/alunos/bulk", payload, { params: { turma_id: turmaId } });
         setAlunos((s) => [...s, ...(data.alunos || [])]);
         return data;
     }
@@ -388,12 +403,14 @@ export default function Teacher() {
                                 <Instrumentos
                                     turma={turmaAtiva}
                                     insts={insts}
+                                    alunos={alunos}
                                     dominios={dominios}
                                     competencias={competencias}
                                     parametrosOD={parametrosOD}
                                     addInstrumento={addInstrumento}
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
+                                    saveODAvaliacao={saveODAvaliacao}
                                     onClassify={(id) => setClassifyingInstId(id)}
                                     onExportRelatorio={(inst) => setRelatorioInst(inst)}
                                 />

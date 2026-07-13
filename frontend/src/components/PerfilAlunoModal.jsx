@@ -38,8 +38,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
         });
     }, [aluno]);
 
-    const domsPct = useMemo(() => calcMediasDominioAluno(insts, aluno.id, dominios), [insts, aluno.id, dominios]);
-    const mediaFinal = useMemo(() => calcMediaFinal(insts, dominios, aluno.id), [insts, dominios, aluno.id]);
+    const domsPct = useMemo(() => calcMediasDominioAluno(insts, aluno.id, dominios, turma), [insts, aluno.id, dominios, turma]);
+    const mediaFinal = useMemo(() => calcMediaFinal(insts, dominios, aluno.id, turma), [insts, dominios, aluno.id, turma]);
     const nivel = getNivel(mediaFinal);
     const radarData = dominios.map((d) => ({ dominio: d.code, valor: domsPct[d.code] != null ? Number(domsPct[d.code].toFixed(1)) : 0, label: d.nome }));
 

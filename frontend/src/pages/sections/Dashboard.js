@@ -12,8 +12,8 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
 
     const medias = alunos.map((a) => ({
         ...a,
-        media: calcMediaFinal(filteredInsts, dominios, a.id),
-        doms: calcMediasDominioAluno(filteredInsts, a.id, dominios),
+        media: calcMediaFinal(filteredInsts, dominios, a.id, turma, semFilter ? parseInt(semFilter) : null),
+        doms: calcMediasDominioAluno(filteredInsts, a.id, dominios, turma, semFilter ? parseInt(semFilter) : null),
     }));
     const comMedia = medias.filter((a) => a.media != null);
     const mediaGeral = comMedia.length ? comMedia.reduce((s, a) => s + a.media, 0) / comMedia.length : null;

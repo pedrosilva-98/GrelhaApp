@@ -180,7 +180,9 @@ class AlunoUpdate(BaseModel):
     medidas: Optional[MedidasEducacaoEspecial] = None
 
 class AlunosBulkIn(BaseModel):
-    nomes: List[str]
+    # Backwards-compat: `nomes` (strings). New: `alunos` (objects with nome + optional data_nascimento + n_processo)
+    nomes: Optional[List[str]] = None
+    alunos: Optional[List[AlunoIn]] = None
 
 class Questao(BaseModel):
     id: str
@@ -211,6 +213,11 @@ class InstrumentoUpdate(BaseModel):
 
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
+
+class ODAvaliacaoUpdate(BaseModel):
+    dom: Optional[str] = None
+    notas: Optional[Dict[str, Optional[float]]] = None  # aluno_id -> nota (0-10) or None to clear
+    semestre: Optional[int] = None  # 1 or 2 or null
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -445,6 +452,43 @@ async def update_turma_config(turma_id: str, body: TurmaConfigUpdate, user: dict
     return await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
 
 
+@api.put("/turmas/{turma_id}/od/{parametro_id}")
+async def update_od_avaliacao(turma_id: str, parametro_id: str, body: ODAvaliacaoUpdate, user: dict = Depends(require_teacher)):
+    turma = await get_turma_or_404(turma_id, user)
+    valid_ids = {p["id"] for p in (turma.get("parametros_od") or [])}
+    if parametro_id not in valid_ids:
+        raise HTTPException(status_code=400, detail="Parâmetro de observação desconhecido")
+    valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+    od_all = dict(turma.get("od_avaliacoes") or {})
+    current = dict(od_all.get(parametro_id) or {})
+    if body.dom is not None:
+        if body.dom and body.dom not in valid_doms:
+            raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {body.dom}")
+        current["dom"] = body.dom or None
+    if body.semestre is not None:
+        if body.semestre not in (0, 1, 2):
+            raise HTTPException(status_code=400, detail="Semestre inválido (usar 1, 2 ou nulo)")
+        current["semestre"] = body.semestre or None
+    if body.notas is not None:
+        cleaned = dict(current.get("notas") or {})
+        for aluno_id, nota in body.notas.items():
+            if nota is None or nota == "":
+                cleaned.pop(aluno_id, None)
+                continue
+            try:
+                n = float(nota)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail=f"Nota inválida para aluno {aluno_id}")
+            if n < 0 or n > 10:
+                raise HTTPException(status_code=400, detail=f"Nota fora de 0-10 para aluno {aluno_id}")
+            cleaned[aluno_id] = n
+        current["notas"] = cleaned
+    od_all[parametro_id] = current
+    await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": {"od_avaliacoes": od_all}})
+    return {"parametro_id": parametro_id, **current}
+
+
+
 @api.delete("/turmas/{turma_id}")
 async def delete_turma(turma_id: str, user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
@@ -479,13 +523,33 @@ async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depe
 async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
     now = datetime.now(timezone.utc).isoformat()
-    nomes = [n.strip() for n in body.nomes if n and n.strip()]
-    if not nomes:
+    docs = []
+    if body.alunos:
+        for a in body.alunos:
+            nome = (a.nome or "").strip()
+            if not nome:
+                continue
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "turma_id": turma_id,
+                "nome": nome,
+                "data_nascimento": (a.data_nascimento or "").strip(),
+                "n_processo": (a.n_processo or "").strip(),
+                "created_at": now,
+            })
+    elif body.nomes:
+        for n in body.nomes:
+            n = (n or "").strip()
+            if not n:
+                continue
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "turma_id": turma_id,
+                "nome": n,
+                "created_at": now,
+            })
+    if not docs:
         return {"inserted": 0, "alunos": []}
-    docs = [
-        {"id": str(uuid.uuid4()), "turma_id": turma_id, "nome": n, "created_at": now}
-        for n in nomes
-    ]
     await db.alunos.insert_many([dict(d) for d in docs])
     return {"inserted": len(docs), "alunos": docs}
 
