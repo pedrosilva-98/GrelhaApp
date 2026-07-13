@@ -1,0 +1,36 @@
+{
+  "summary": "Phase 3 (Perfil do Aluno + AlunoSelectorModal + individual instrument PDFs) fully validated. Backend: 9/9 new pytest cases pass for PUT /api/alunos/{id} (partial updates, medidas trimming, 404 on unknown id, 401 unauth, foreign-teacher denial, plus regressions on turmas/alunos/instrumentos/notas). Frontend: Eye icon opens PerfilAlunoModal with all 3 tabs (Dados/Avaliação/Educação Especial). Radar chart renders, medidas add/remove works, Guardar alterações persists nome/dn/nProc/medidas via PUT (verified – aluno row updates immediately). Instrumentos → FileText opens AlunoSelectorModal, toggle-all cycles selection count (1/1 → 0/1 → 1/1), Gerar PDFs closes modal (client-side jspdf save). No missing-import build errors detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PerfilAlunoModal · Avaliação (Radar chart)", "issues": ["Recharts ResponsiveContainer logs 'width(-1)/height(-1) should be greater than 0' warnings on first mount because the tab panel is initially hidden (display none via non-active tab) then measured before layout settles. Purely a console warning – radar renders correctly once tab is active. Consider giving the wrapper a fixed minHeight or lazy-mounting the chart only when tab==='avaliacao' is entered."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7_phase3.py",
+    "/app/test_reports/pytest/iteration7.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Silence recharts width/height=-1 console warning inside PerfilAlunoModal by only rendering RadarChart when tab==='avaliacao' or by wrapping the ResponsiveContainer in a div with explicit height class already applied (it has h-72 but the tab panel is hidden on first render).",
+    "(Optional) test_iteration6_phase2.py::test_meta_sucesso_out_of_range now expects 422 but server returns 400 (main agent addressed prior review comment). Update the assertion to `assert r.status_code == 400`. Not a regression – behavior is now correct per spec."
+  ],
+  "critical_code_review_comments": [
+    "PUT /api/alunos/{id}: foreign-teacher access returns 404 (via get_turma_or_404) rather than 403 as stated in the request spec. Semantically equivalent (hides existence) and arguably better for security, but the request wording says 403. Consider explicit 403 if strict spec match is desired.",
+    "AlunoSelectorModal initialises `selected` with all alunos preselected in state constructor; if the parent later changes the `alunos` prop while the modal is open, selection won't refresh (no useEffect). Low risk since modal is opened per-click.",
+    "PerfilAlunoModal: `dn` field passes value only if it matches YYYY-MM-DD regex, otherwise renders empty. Correct guard against invalid stored formats, but user's previously-saved malformed date would silently blank the input on next open. Consider surfacing a hint.",
+    "Teacher.js `updateAluno` optimistically replaces the aluno in state with the API response – good. But if the PUT fails, the caller (PerfilAlunoModal) surfaces the error via toast – there's no rollback state divergence because state was not touched pre-response. OK.",
+    "No unit tests exist for exportInstrumentoRelatorioAlunoPDF header string formatting ('Nome (CP-89%, RRP-20%)'). Since it is client-side jspdf, it can only be validated by inspecting the downloaded PDF or by unit-testing pdf.js. Not tested here."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7_phase3.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new + 18/19 regressions – the 1 'failure' is a stale assertion in iteration6 tests, not a bug)", "frontend": "100% flows validated (PerfilAlunoModal Dados/Avaliação/Especial + AlunoSelectorModal)"},
+  "test_credentials": "Admin: passilva2005@gmail.com / !grelhaadmin2005!  |  Teacher: phase2test@teste.pt / teste123 (existing seed with 1 turma Matemática 7A, 1 aluno Pedro Miguel Silva).",
+  "seed_data_creation": "Backend tests create 2 ephemeral teachers (phase3_it7_A_*/phase3_it7_B_*@teste.pt) with cleanup. Frontend reused existing phase2test/Pedro Miguel Silva account.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 test file: /app/backend/tests/test_iteration7_phase3.py. Frontend data-testids confirmed working: view-aluno-{id}, perfil-aluno-modal, perfil-tab-dados/avaliacao/especial, perfil-nome/dn/nproc, perfil-radar, add-universais/adicionais/seletivas, medida-{key}-{i}, perfil-save/close, aluno-selector-modal, toggle-all-alunos, selection-count, select-aluno-{id}, aluno-selector-confirm. Login response field is 'access_token'. Recharts inside hidden tab panels emits width=-1 warnings on mount – cosmetic.",
+  "rca of the issue": "No blocking issues found in Phase 3. The Recharts console warnings originate from the ResponsiveContainer being mounted in a tab panel whose parent has display:none-equivalent state until user clicks the Avaliação tab; recharts measures its container before it becomes visible → width=-1. Fix: lazy-mount chart when tab === 'avaliacao', or use `key={tab}` to remount, or apply explicit CSS minHeight."
+}

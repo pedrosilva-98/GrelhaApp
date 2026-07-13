@@ -168,6 +168,17 @@ class AlunoIn(BaseModel):
     data_nascimento: Optional[str] = None
     n_processo: Optional[str] = None
 
+class MedidasEducacaoEspecial(BaseModel):
+    universais: List[str] = []
+    adicionais: List[str] = []
+    seletivas: List[str] = []
+
+class AlunoUpdate(BaseModel):
+    nome: Optional[str] = None
+    data_nascimento: Optional[str] = None
+    n_processo: Optional[str] = None
+    medidas: Optional[MedidasEducacaoEspecial] = None
+
 class AlunosBulkIn(BaseModel):
     nomes: List[str]
 
@@ -477,6 +488,30 @@ async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: 
     ]
     await db.alunos.insert_many([dict(d) for d in docs])
     return {"inserted": len(docs), "alunos": docs}
+
+
+@api.put("/alunos/{aluno_id}")
+async def update_aluno(aluno_id: str, body: AlunoUpdate, user: dict = Depends(require_teacher)):
+    aluno = await db.alunos.find_one({"id": aluno_id}, {"_id": 0})
+    if not aluno:
+        raise HTTPException(status_code=404, detail="Aluno não encontrado")
+    await get_turma_or_404(aluno["turma_id"], user)
+    updates = {}
+    if body.nome is not None:
+        updates["nome"] = body.nome.strip()
+    if body.data_nascimento is not None:
+        updates["data_nascimento"] = (body.data_nascimento or "").strip()
+    if body.n_processo is not None:
+        updates["n_processo"] = (body.n_processo or "").strip()
+    if body.medidas is not None:
+        updates["medidas"] = {
+            "universais": [m.strip() for m in body.medidas.universais if m and m.strip()],
+            "adicionais": [m.strip() for m in body.medidas.adicionais if m and m.strip()],
+            "seletivas": [m.strip() for m in body.medidas.seletivas if m and m.strip()],
+        }
+    if updates:
+        await db.alunos.update_one({"id": aluno_id}, {"$set": updates})
+    return await db.alunos.find_one({"id": aluno_id}, {"_id": 0})
 
 
 @api.delete("/alunos/{aluno_id}")

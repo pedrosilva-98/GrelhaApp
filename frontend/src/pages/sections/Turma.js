@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
-import { Trash2, UserPlus, Upload, X, Check } from "lucide-react";
+import { Trash2, UserPlus, Upload, X, Check, Eye } from "lucide-react";
+import PerfilAlunoModal from "@/components/PerfilAlunoModal";
 
-export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
+export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, addAlunosBulk, updateAluno }) {
     const [nome, setNome] = useState("");
     const [dn, setDn] = useState("");
     const [nProc, setNProc] = useState("");
     const [showImport, setShowImport] = useState(false);
+    const [perfilAluno, setPerfilAluno] = useState(null);
 
     async function submit(e) {
         e.preventDefault();
@@ -91,9 +93,14 @@ export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-PT") : "—"}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.n_processo || "—"}</td>
                                 <td className="px-5 py-3 text-right">
-                                    <button data-testid={`del-aluno-${a.id}`} onClick={() => delAluno(a.id)} className="btn-danger-ghost" title="Eliminar">
-                                        <Trash2 size={14} />
-                                    </button>
+                                    <div className="flex justify-end gap-1">
+                                        <button data-testid={`view-aluno-${a.id}`} onClick={() => setPerfilAluno(a)} className="btn-ghost !px-2 !py-1.5" title="Ver perfil">
+                                            <Eye size={14} />
+                                        </button>
+                                        <button data-testid={`del-aluno-${a.id}`} onClick={() => delAluno(a.id)} className="btn-danger-ghost" title="Eliminar">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
@@ -102,6 +109,19 @@ export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
             </div>
 
             {showImport && <ImportCSVModal onClose={() => setShowImport(false)} onImport={addAlunosBulk} />}
+            {perfilAluno && (
+                <PerfilAlunoModal
+                    aluno={perfilAluno}
+                    turma={turma}
+                    insts={insts}
+                    onClose={() => setPerfilAluno(null)}
+                    onSave={async (id, payload) => {
+                        await updateAluno(id, payload);
+                        // update local reference so modal shows saved values immediately
+                        setPerfilAluno((cur) => (cur ? { ...cur, ...payload } : cur));
+                    }}
+                />
+            )}
         </div>
     );
 }

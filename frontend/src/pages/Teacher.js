@@ -9,7 +9,8 @@ import Config from "@/pages/sections/Config";
 import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
-import { exportGrelhaPDF, exportInstrumentoRelatorioPDF } from "@/lib/pdf";
+import AlunoSelectorModal from "@/components/AlunoSelectorModal";
+import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF } from "@/lib/pdf";
 import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound } from "lucide-react";
 
 const TABS = [
@@ -36,6 +37,7 @@ export default function Teacher() {
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
     const [classifyingInstId, setClassifyingInstId] = useState(null);
+    const [relatorioInst, setRelatorioInst] = useState(null); // instrumento for the aluno-selector modal
 
     const [loadingTurmas, setLoadingTurmas] = useState(true);
     const [loadingData, setLoadingData] = useState(false);
@@ -163,6 +165,11 @@ export default function Teacher() {
         setAlunos((s) => s.filter((a) => a.id !== id));
         const r = await api.get("/instrumentos", { params: { turma_id: turmaId } });
         setInsts(r.data);
+    }
+    async function updateAluno(id, payload) {
+        const { data } = await api.put(`/alunos/${id}`, payload);
+        setAlunos((s) => s.map((a) => (a.id === id ? data : a)));
+        return data;
     }
     async function addInstrumento(payload) {
         const { data } = await api.post("/instrumentos", payload, { params: { turma_id: turmaId } });
@@ -360,7 +367,7 @@ export default function Teacher() {
                 ) : (
                     <>
                         {tab === "dashboard" && <Dashboard turma={turmaAtiva} alunos={alunos} insts={insts} dominios={dominios} />}
-                        {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} />}
+                        {tab === "alunos" && <Turma turma={turmaAtiva} insts={insts} alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} updateAluno={updateAluno} />}
                         {tab === "instrumentos" && (
                             classifyingInstId ? (
                                 <div className="anim-in">
@@ -388,7 +395,7 @@ export default function Teacher() {
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
                                     onClassify={(id) => setClassifyingInstId(id)}
-                                    onExportRelatorio={(inst) => exportInstrumentoRelatorioPDF({ user, turma: turmaAtiva, alunos, instrumento: inst })}
+                                    onExportRelatorio={(inst) => setRelatorioInst(inst)}
                                 />
                             )
                         )}
@@ -420,6 +427,26 @@ export default function Teacher() {
 
             {showChangePw && (
                 <ChangePasswordModal onClose={() => setShowChangePw(false)} />
+            )}
+
+            {relatorioInst && (
+                <AlunoSelectorModal
+                    alunos={alunos}
+                    title="Relatório por aprendizagens"
+                    subtitle={`Serão gerados PDFs individuais para o instrumento "${relatorioInst.nome}".`}
+                    confirmLabel="Gerar PDFs"
+                    onClose={() => setRelatorioInst(null)}
+                    onConfirm={async (chosen) => {
+                        // Sequential to avoid the browser blocking multiple downloads
+                        for (const aluno of chosen) {
+                            exportInstrumentoRelatorioAlunoPDF({
+                                user, turma: turmaAtiva, aluno, instrumento: relatorioInst, insts,
+                            });
+                            // Small delay so browsers show all downloads
+                            await new Promise((r) => setTimeout(r, 250));
+                        }
+                    }}
+                />
             )}
         </div>
     );

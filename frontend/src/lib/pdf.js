@@ -1,7 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX } from "@/lib/grelha";
-
 // ─── Avaliação final (grelha da turma) ───────────────────────────────────────
 export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -236,3 +235,108 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
 
 // Backwards-compat placeholder (some imports may still expect this name)
 export { calcDominioInstrumento };
+
+// ─── Relatório INDIVIDUAL por aluno (aprendizagens essenciais) ───────────────
+// One PDF per aluno. Header includes aluno name + domain % breakdown, e.g. "Pedro Miguel (CP-89%, RRP-20%)".
+// Body: table of aprendizagens x student % (single column) with <60% highlighted red.
+export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrumento, insts }) {
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("pt-PT");
+    const dominios = turma.dominios || [];
+
+    // Domain percentages for this aluno (across ALL instruments, matches Dashboard)
+    const domsPct = calcMediasDominioAluno(insts || [instrumento], aluno.id, dominios);
+    const domBits = dominios
+        .map((d) => (domsPct[d.code] != null ? `${d.code}-${Math.round(domsPct[d.code])}%` : `${d.code}-—`))
+        .join(", ");
+    const alunoLabel = `${aluno.nome} (${domBits})`;
+
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(44, 74, 59);
+    doc.text("Relatório individual por aprendizagens", 40, 44);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 100, 100);
+    doc.text(`${turma.disciplina} · ${turma.ano} ${turma.turma} · ${instrumento.nome} (${instrumento.tipo})`, 40, 62);
+    doc.text(`Gerado em ${dateStr}${user?.nome ? ` · Prof. ${user.nome}` : ""}`, 40, 76);
+
+    doc.setDrawColor(229, 227, 219);
+    doc.line(40, 90, doc.internal.pageSize.getWidth() - 40, 90);
+
+    // Aluno label (bold, wrapped)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(44, 74, 59);
+    const wrapped = doc.splitTextToSize(alunoLabel, doc.internal.pageSize.getWidth() - 80);
+    doc.text(wrapped, 40, 108);
+    let startY = 118 + (wrapped.length - 1) * 14;
+
+    // Table rows: one per aprendizagem present in the instrumento
+    const compsInInstrumento = Array.from(new Set((instrumento.questoes || []).map((q) => q.comp).filter(Boolean)));
+    const compByCode = Object.fromEntries((turma.competencias || []).map((c) => [c.code, c]));
+
+    if (!compsInInstrumento.length) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        doc.setTextColor(158, 57, 33);
+        doc.text(
+            "Este instrumento ainda não tem aprendizagens associadas às questões. Edite o instrumento e atribua uma aprendizagem a cada questão.",
+            40, startY + 12, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
+        );
+        const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
+        doc.save(`relatorio_aluno_${safeName}.pdf`);
+        return;
+    }
+
+    const cellStyles = {};
+    const body = compsInInstrumento.map((code, rowIdx) => {
+        const c = compByCode[code];
+        const label = c?.nome || "(descritor em falta)";
+        const qs = (instrumento.questoes || []).filter((q) => q.comp === code);
+        const notas = (instrumento.notas || {})[aluno.id] || {};
+        const totCot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);
+        const anyNota = qs.some((q) => notas[q.id] != null && notas[q.id] !== "");
+        let pct = null;
+        if (totCot > 0 && anyNota) {
+            const weighted = qs.reduce((s, q) => s + (Number(notas[q.id] || 0) / NOTA_MAX) * Number(q.cotacao || 0), 0);
+            pct = (weighted / totCot) * 100;
+        }
+        if (pct != null && pct < 60) {
+            cellStyles[rowIdx] = { 2: { fillColor: [252, 218, 210], textColor: [138, 26, 26], fontStyle: "bold" } };
+        }
+        return [String(rowIdx + 1).padStart(2, "0"), label, pct != null ? pct.toFixed(1) + "%" : "—"];
+    });
+
+    autoTable(doc, {
+        head: [["#", "Aprendizagem essencial", "%"]],
+        body,
+        startY,
+        theme: "grid",
+        styles: { font: "helvetica", fontSize: 9.5, textColor: [44, 62, 53], lineColor: [229, 227, 219], lineWidth: 0.5, cellPadding: 6, overflow: "linebreak" },
+        headStyles: { fillColor: [44, 74, 59], textColor: [249, 248, 246], fontStyle: "bold", fontSize: 9.5, halign: "center" },
+        alternateRowStyles: { fillColor: [249, 248, 246] },
+        columnStyles: {
+            0: { cellWidth: 28, halign: "center" },
+            1: { cellWidth: 380 },
+            2: { cellWidth: 60, halign: "center" },
+        },
+        didParseCell(data) {
+            if (data.section !== "body") return;
+            const cs = cellStyles[data.row.index]?.[data.column.index];
+            if (cs) Object.assign(data.cell.styles, cs);
+        },
+    });
+
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setTextColor(150, 155, 145);
+    doc.text("Células a vermelho: aprendizagem abaixo de 60% da cotação.", 40, pageH - 30);
+    doc.text("Relatório individual · gerado automaticamente", 40, pageH - 18);
+
+    const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
+    doc.save(`relatorio_aluno_${safeName}.pdf`);
+}
