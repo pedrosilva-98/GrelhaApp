@@ -1,0 +1,33 @@
+{
+  "summary": "Phase 2 backend + frontend tested end-to-end. 19/19 backend pytest cases pass (turma config semestres/meta/parametros_od with all validations, instrumento create/update with semestre + observacao_direta validations, and regressions for auth/turma/aluno/notas). Frontend Config page renders all 4 new sections and each save action persists via the correct endpoint; Instrumentos form shows Semestre selector, vertical Questão cards, and OD section — client-side out-of-range date warning fires and disables Save. Dashboard semester filter (all/1/2) works and Média KPI shows 'meta 60%' hint.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Instrumentos form — Domínio <select>", "issues": ["React hydration warning: '<span> cannot be a child of <option>'. Caused by the emergent instrumentation wrapper injecting a <span data-ve-dynamic> inside the <option> tag when rendering {d.code} — {d.nome}. Functionally the dropdown still works, but the console error is noisy. Consider disabling instrumentation for <option> children or refactoring to a static string via template literal that the wrapper doesn't split."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_phase2.py",
+    "/app/test_reports/pytest/iteration6.xml"
+  ],
+  "action_items": [
+    "(Low priority) Silence the <option>-child-<span> hydration warning in Instrumentos.js line 275 and 294 (Domínio and Aprendizagem selects) — likely by simplifying JSX children to a single string interpolation the emergent instrumenter doesn't wrap."
+  ],
+  "critical_code_review_comments": [
+    "meta_sucesso out-of-range returns HTTP 422 (Pydantic Field ge/le) rather than the 400 stated in the request spec. Semantically equivalent but if the frontend only reads 400s, error toasts may not surface. Consider explicit HTTPException(400) for consistency with the other validators.",
+    "TurmaConfigUpdate.semestres allows a partial patch (only key '1' present) that skips the '1+2==100' sum check. This is fine for progressive save flows but should be documented.",
+    "PUT /api/instrumentos/{id} recomputes final_data/final_sem against updates OR existing, but if 'observacao_direta' is supplied without semestre change, the parametros_od validation uses the current turma — correct behavior confirmed by test.",
+    "Config.js SemestresSection stores peso as string when user edits (before parseInt). Save() coerces properly, but the disabled logic uses parseInt on each render — safe. Consider extracting a small hook to DRY.",
+    "kpi-média-da-turma testid contains a non-ASCII character 'é'. Works but atypical; teams sometimes use ascii-only testids for grep/lint."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% flows validated (Config, Instrumentos, Dashboard filter, meta KPI)"},
+  "test_credentials": "Admin: passilva2005@gmail.com / !grelhaadmin2005!  |  Teacher: phase2test@teste.pt / teste123 (already existed).",
+  "seed_data_creation": "Backend tests create an ephemeral teacher (phase2_it6_*@teste.pt) per session and delete it on teardown, plus per-test turmas that are deleted. Frontend re-used the existing phase2test teacher and its existing turma.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Phase 2 endpoints (PUT /api/turmas/{id}/config, POST/PUT /api/instrumentos with semestre + observacao_direta) fully covered by /app/backend/tests/test_iteration6_phase2.py. Frontend testids used successfully: sem-{1|2}-{inicio|fim|peso}, sem-save-btn, meta-sucesso-input, meta-save-btn, param-add-btn/param-nome-{i}/param-dom-{i}/param-save-btn, inst-semestre, inst-data, od-section, od-nota-{i}, date-oor-warning, sem-filter-{all|1|2}, kpi-média-da-turma. Login response field is 'access_token'.",
+  "rca of the issue": "No blocking issues. Only cosmetic: emergent dev-tooling injects a <span> inside <option> which triggers a React hydration console error; this is a wrapper/instrumentation concern, not app logic."
+}

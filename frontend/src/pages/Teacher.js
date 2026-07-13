@@ -44,6 +44,7 @@ export default function Teacher() {
     const turmaAtiva = useMemo(() => turmas.find((t) => t.id === turmaId), [turmas, turmaId]);
     const dominios = turmaAtiva?.dominios || [];
     const competencias = turmaAtiva?.competencias || [];
+    const parametrosOD = turmaAtiva?.parametros_od || [];
 
     async function loadTurmas(selectId) {
         setLoadingTurmas(true);
@@ -139,6 +140,11 @@ export default function Teacher() {
     async function saveAprendizagems(newComps) {
         const { data } = await api.put(`/turmas/${turmaId}/competencias`, { competencias: newComps });
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, competencias: data.competencias } : t)));
+    }
+
+    async function saveTurmaConfig(payload) {
+        const { data } = await api.put(`/turmas/${turmaId}/config`, payload);
+        setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, ...data } : t)));
     }
 
     async function addAluno(payload) {
@@ -353,7 +359,7 @@ export default function Teacher() {
                     <div className="text-center text-brand-sage py-24">A carregar...</div>
                 ) : (
                     <>
-                        {tab === "dashboard" && <Dashboard alunos={alunos} insts={insts} dominios={dominios} />}
+                        {tab === "dashboard" && <Dashboard turma={turmaAtiva} alunos={alunos} insts={insts} dominios={dominios} />}
                         {tab === "alunos" && <Turma alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} />}
                         {tab === "instrumentos" && (
                             classifyingInstId ? (
@@ -373,9 +379,11 @@ export default function Teacher() {
                                 </div>
                             ) : (
                                 <Instrumentos
+                                    turma={turmaAtiva}
                                     insts={insts}
                                     dominios={dominios}
                                     competencias={competencias}
+                                    parametrosOD={parametrosOD}
                                     addInstrumento={addInstrumento}
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
@@ -384,7 +392,16 @@ export default function Teacher() {
                                 />
                             )
                         )}
-                        {tab === "config" && <Config dominios={dominios} competencias={competencias} saveDominios={saveDominios} saveAprendizagems={saveAprendizagems} />}
+                        {tab === "config" && (
+                            <Config
+                                turma={turmaAtiva}
+                                dominios={dominios}
+                                competencias={competencias}
+                                saveDominios={saveDominios}
+                                saveAprendizagems={saveAprendizagems}
+                                saveTurmaConfig={saveTurmaConfig}
+                            />
+                        )}
                     </>
                 )}
             </main>

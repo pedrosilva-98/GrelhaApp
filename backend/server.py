@@ -148,6 +148,21 @@ class CompetenciaItem(BaseModel):
 class CompetenciasUpdate(BaseModel):
     competencias: List[CompetenciaItem]
 
+class SemestreConfig(BaseModel):
+    inicio: str = ""    # ISO date "YYYY-MM-DD" or ""
+    fim: str = ""       # ISO date "YYYY-MM-DD" or ""
+    peso: int = Field(default=50, ge=0, le=100)
+
+class ParametroOD(BaseModel):
+    id: str
+    nome: str
+    dom: Optional[str] = None  # default domain (optional; may be per-instrument)
+
+class TurmaConfigUpdate(BaseModel):
+    semestres: Optional[Dict[str, SemestreConfig]] = None       # keys "1" and "2"
+    parametros_od: Optional[List[ParametroOD]] = None
+    meta_sucesso: Optional[float] = Field(default=None, ge=0, le=100)
+
 class AlunoIn(BaseModel):
     nome: str
     data_nascimento: Optional[str] = None
@@ -162,17 +177,26 @@ class Questao(BaseModel):
     cotacao: float
     comp: Optional[str] = None  # competência code (optional)
 
+class ObservacaoNota(BaseModel):
+    parametro_id: str
+    dom: str
+    nota: Optional[float] = None  # 0-10
+
 class InstrumentoIn(BaseModel):
     nome: str
     tipo: str
     data: str = ""
+    semestre: Optional[int] = None  # 1 or 2
     questoes: List[Questao]
+    observacao_direta: Optional[List[ObservacaoNota]] = None
 
 class InstrumentoUpdate(BaseModel):
     nome: Optional[str] = None
     tipo: Optional[str] = None
     data: Optional[str] = None
+    semestre: Optional[int] = None
     questoes: Optional[List[Questao]] = None
+    observacao_direta: Optional[List[ObservacaoNota]] = None
 
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
@@ -373,6 +397,40 @@ async def update_competencias(turma_id: str, body: CompetenciasUpdate, user: dic
     )
     return {"competencias": new_comps}
 
+@api.put("/turmas/{turma_id}/config")
+async def update_turma_config(turma_id: str, body: TurmaConfigUpdate, user: dict = Depends(require_teacher)):
+    await get_turma_or_404(turma_id, user)
+    updates = {}
+    if body.semestres is not None:
+        # Expect keys "1" and "2"; validate that if both weights set, sum == 100
+        sem = {}
+        for k, v in body.semestres.items():
+            if k not in ("1", "2"):
+                raise HTTPException(status_code=400, detail="Chave de semestre inválida (usar '1' ou '2')")
+            if v.inicio and v.fim and v.inicio > v.fim:
+                raise HTTPException(status_code=400, detail=f"{k}º Semestre: data de início posterior à data de fim")
+            sem[k] = {"inicio": v.inicio, "fim": v.fim, "peso": int(v.peso)}
+        if "1" in sem and "2" in sem:
+            total = sem["1"]["peso"] + sem["2"]["peso"]
+            if total != 100:
+                raise HTTPException(status_code=400, detail=f"A soma dos pesos dos semestres deve ser 100% (atual: {total}%)")
+        updates["semestres"] = sem
+    if body.parametros_od is not None:
+        ids = [p.id.strip() for p in body.parametros_od]
+        if any(not i for i in ids):
+            raise HTTPException(status_code=400, detail="Cada parâmetro precisa de um identificador")
+        if len(set(ids)) != len(ids):
+            raise HTTPException(status_code=400, detail="Identificadores de parâmetro duplicados")
+        updates["parametros_od"] = [
+            {"id": p.id.strip(), "nome": p.nome.strip(), "dom": (p.dom or "").strip() or None}
+            for p in body.parametros_od
+        ]
+    if body.meta_sucesso is not None:
+        updates["meta_sucesso"] = float(body.meta_sucesso)
+    if updates:
+        await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": updates})
+    return await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
+
 
 @api.delete("/turmas/{turma_id}")
 async def delete_turma(turma_id: str, user: dict = Depends(require_teacher)):
@@ -439,6 +497,36 @@ async def get_instrumentos(turma_id: str = Query(...), user: dict = Depends(requ
     await get_turma_or_404(turma_id, user)
     return await db.instrumentos.find({"turma_id": turma_id}, {"_id": 0}).sort("created_at", 1).to_list(1000)
 
+def _validate_semestre_date(turma: dict, semestre: Optional[int], data: str):
+    """Ensure inst.data lies within the configured semestre range (if configured)."""
+    if not semestre or not data:
+        return
+    sems = (turma.get("semestres") or {})
+    key = str(semestre)
+    if key not in sems:
+        return
+    inicio = sems[key].get("inicio") or ""
+    fim = sems[key].get("fim") or ""
+    if inicio and data < inicio:
+        raise HTTPException(status_code=400, detail=f"A data do instrumento é anterior ao início do {key}º Semestre ({inicio}).")
+    if fim and data > fim:
+        raise HTTPException(status_code=400, detail=f"A data do instrumento é posterior ao fim do {key}º Semestre ({fim}).")
+
+
+def _validate_observacao_direta(turma: dict, ods: Optional[List[ObservacaoNota]]):
+    if not ods:
+        return
+    valid_ids = {p["id"] for p in (turma.get("parametros_od") or [])}
+    valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
+    for od in ods:
+        if od.parametro_id not in valid_ids:
+            raise HTTPException(status_code=400, detail=f"Parâmetro de observação desconhecido: {od.parametro_id}")
+        if od.dom not in valid_doms:
+            raise HTTPException(status_code=400, detail=f"Domínio desconhecido na observação direta: {od.dom}")
+        if od.nota is not None and (od.nota < 0 or od.nota > 10):
+            raise HTTPException(status_code=400, detail="Nota da observação direta deve estar entre 0 e 10")
+
+
 @api.post("/instrumentos")
 async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     turma = await get_turma_or_404(turma_id, user)
@@ -449,13 +537,19 @@ async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user:
             raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
         if q.comp and q.comp not in valid_comps:
             raise HTTPException(status_code=400, detail=f"Competência desconhecida: {q.comp}")
+    if body.semestre is not None and body.semestre not in (1, 2):
+        raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
+    _validate_semestre_date(turma, body.semestre, body.data)
+    _validate_observacao_direta(turma, body.observacao_direta)
     doc = {
         "id": str(uuid.uuid4()),
         "turma_id": turma_id,
         "nome": body.nome.strip(),
         "tipo": body.tipo,
         "data": body.data,
+        "semestre": body.semestre,
         "questoes": [q.model_dump() for q in body.questoes],
+        "observacao_direta": [o.model_dump() for o in (body.observacao_direta or [])],
         "notas": {},
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -476,6 +570,14 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
         updates["tipo"] = body.tipo
     if body.data is not None:
         updates["data"] = body.data
+    if body.semestre is not None:
+        if body.semestre not in (1, 2):
+            raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
+        updates["semestre"] = body.semestre
+    # Validate final date against final semestre after applying updates
+    final_data = updates.get("data", inst.get("data", ""))
+    final_sem = updates.get("semestre", inst.get("semestre"))
+    _validate_semestre_date(turma, final_sem, final_data)
     if body.questoes is not None:
         valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
         valid_comps = {c["code"] for c in (turma.get("competencias") or [])}
@@ -494,6 +596,9 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
             if filt:
                 cleaned[aid] = filt
         updates["notas"] = cleaned
+    if body.observacao_direta is not None:
+        _validate_observacao_direta(turma, body.observacao_direta)
+        updates["observacao_direta"] = [o.model_dump() for o in body.observacao_direta]
     if updates:
         await db.instrumentos.update_one({"id": inst_id}, {"$set": updates})
     return await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})

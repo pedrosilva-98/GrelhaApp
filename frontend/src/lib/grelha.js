@@ -27,6 +27,23 @@ export function domColor(index) {
 // Nota input scale
 export const NOTA_MAX = 10;
 
+// Filter instrumentos by semestre (1 or 2). If sem is null/undefined => no filter.
+// Includes instruments whose `semestre` matches OR (if no explicit semestre stored)
+// whose `data` falls within the semestre range configured on the turma.
+export function filterBySemestre(insts, sem, turma) {
+    if (!sem) return insts;
+    const range = (turma?.semestres || {})[String(sem)] || null;
+    return insts.filter((i) => {
+        if (i.semestre === sem) return true;
+        if (i.semestre != null && i.semestre !== sem) return false;
+        // No semestre stored → try date range
+        if (range && i.data && range.inicio && range.fim) {
+            return i.data >= range.inicio && i.data <= range.fim;
+        }
+        return false;
+    });
+}
+
 export function getNivel(v) {
     if (v == null || Number.isNaN(v)) return null;
     return NIVEIS.find((x) => v >= x.min) || NIVEIS[NIVEIS.length - 1];
@@ -51,18 +68,25 @@ export function calcClassif(instrumento, alunoId) {
 }
 
 // Same idea restricted to a domain code
+// Includes both questões (per-student notas) and observacao_direta items on the instrument
+// (whose nota is a single value applied to any student who has any nota registered).
 export function calcDominioInstrumento(instrumento, alunoId, domCode) {
     const notas = instrumento.notas?.[alunoId];
-    if (!notas) return null;
-    const qs = instrumento.questoes.filter((q) => q.dom === domCode);
-    const tot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);
+    const qs = (instrumento.questoes || []).filter((q) => q.dom === domCode);
+    const ods = (instrumento.observacao_direta || []).filter((o) => o.dom === domCode && o.nota != null && o.nota !== "");
+    const tot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0) + ods.length * NOTA_MAX;
     if (!tot) return null;
-    const anyNota = qs.some((q) => notas[q.id] != null && notas[q.id] !== "");
-    if (!anyNota) return null;
-    const weighted = qs.reduce((s, q) => {
-        const nota = Number(notas[q.id] || 0);
-        return s + (nota / NOTA_MAX) * Number(q.cotacao || 0);
-    }, 0);
+    const anyNotaQ = notas && qs.some((q) => notas[q.id] != null && notas[q.id] !== "");
+    const anyOD = ods.length > 0;
+    if (!anyNotaQ && !anyOD) return null;
+    let weighted = 0;
+    if (notas) {
+        weighted += qs.reduce((s, q) => {
+            const nota = Number(notas[q.id] || 0);
+            return s + (nota / NOTA_MAX) * Number(q.cotacao || 0);
+        }, 0);
+    }
+    weighted += ods.reduce((s, o) => s + (Number(o.nota) / NOTA_MAX) * NOTA_MAX, 0);
     return (weighted / tot) * 100;
 }
 
