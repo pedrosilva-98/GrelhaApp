@@ -114,6 +114,7 @@ class TeacherCreate(BaseModel):
     email: EmailStr
     password: str
     nome: str
+    agrupamento: str = ""
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -149,6 +150,8 @@ class CompetenciasUpdate(BaseModel):
 
 class AlunoIn(BaseModel):
     nome: str
+    data_nascimento: Optional[str] = None
+    n_processo: Optional[str] = None
 
 class AlunosBulkIn(BaseModel):
     nomes: List[str]
@@ -220,6 +223,7 @@ async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
         "email": email,
         "password_hash": hash_password(body.password),
         "nome": body.nome.strip(),
+        "agrupamento": (body.agrupamento or "").strip(),
         "role": "teacher",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -392,6 +396,8 @@ async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depe
         "id": str(uuid.uuid4()),
         "turma_id": turma_id,
         "nome": body.nome.strip(),
+        "data_nascimento": (body.data_nascimento or "").strip(),
+        "n_processo": (body.n_processo or "").strip(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.alunos.insert_one(doc)

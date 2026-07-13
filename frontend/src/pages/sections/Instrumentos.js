@@ -171,9 +171,9 @@ export default function Instrumentos({ insts, dominios, competencias = [], addIn
                                             className="input-forest flex-1 min-w-[220px] text-xs"
                                             value={q.comp || ""}
                                             onChange={(e) => updateQ(i, "comp", e.target.value)}
-                                            title="Competência essencial"
+                                            title="Aprendizagem essencial"
                                         >
-                                            <option value="">— Competência —</option>
+                                            <option value="">— Aprendizagem —</option>
                                             {competencias.map((c) => (
                                                 <option key={c.code} value={c.code}>{c.nome.length > 80 ? c.nome.slice(0, 77) + "…" : c.nome}</option>
                                             ))}
@@ -239,7 +239,7 @@ export default function Instrumentos({ insts, dominios, competencias = [], addIn
                                             data-testid={`relatorio-inst-${inst.id}`}
                                             onClick={() => onExportRelatorio && onExportRelatorio(inst)}
                                             className="btn-ghost !px-2 !py-1.5"
-                                            title="Exportar relatório por competências (PDF)"
+                                            title="Exportar relatório por aprendizagens (PDF)"
                                         >
                                             <FileText size={14} />
                                         </button>

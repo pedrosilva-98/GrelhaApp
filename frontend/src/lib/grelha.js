@@ -13,7 +13,7 @@ export const TIPOS_INSTRUMENTO = [
     "Avaliação Sumativa",
     "Avaliação Formativa",
     "Questão de Aula",
-    "Observação Direta",
+    "Trabalhos Individuais ou de Grupo",
     "Avaliação de Diagnóstico",
 ];
 

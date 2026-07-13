@@ -136,13 +136,14 @@ export default function Teacher() {
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, dominios: data.dominios } : t)));
     }
 
-    async function saveCompetencias(newComps) {
+    async function saveAprendizagems(newComps) {
         const { data } = await api.put(`/turmas/${turmaId}/competencias`, { competencias: newComps });
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, competencias: data.competencias } : t)));
     }
 
-    async function addAluno(nome) {
-        const { data } = await api.post("/alunos", { nome }, { params: { turma_id: turmaId } });
+    async function addAluno(payload) {
+        const body = typeof payload === "string" ? { nome: payload } : payload;
+        const { data } = await api.post("/alunos", body, { params: { turma_id: turmaId } });
         setAlunos((s) => [...s, data]);
     }
     async function addAlunosBulk(nomes) {
@@ -383,7 +384,7 @@ export default function Teacher() {
                                 />
                             )
                         )}
-                        {tab === "config" && <Config dominios={dominios} competencias={competencias} saveDominios={saveDominios} saveCompetencias={saveCompetencias} />}
+                        {tab === "config" && <Config dominios={dominios} competencias={competencias} saveDominios={saveDominios} saveAprendizagems={saveAprendizagems} />}
                     </>
                 )}
             </main>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { X, Upload, Plus, Save, Check } from "lucide-react";
 
-// Parse CSV/TSV or plain text: one competência per row.
+// Parse CSV/TSV or plain text: one aprendizagem per row.
 // Detects "code" and "nome" columns by header names.
 function parseTable(text) {
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -12,7 +12,7 @@ function parseTable(text) {
     let codeIdx = -1, nomeIdx = -1;
     const header = rows[0].map((h) => h.toLowerCase());
     codeIdx = header.findIndex((h) => ["codigo", "código", "code", "cod"].includes(h));
-    nomeIdx = header.findIndex((h) => ["nome", "descricao", "descrição", "descritor", "competencia", "competência", "name"].includes(h));
+    nomeIdx = header.findIndex((h) => ["nome", "descricao", "descrição", "descritor", "competencia", "aprendizagem", "name"].includes(h));
     if (codeIdx >= 0 || nomeIdx >= 0) rows = rows.slice(1);
     // Fallback: 1 col → nome only; 2 cols → code, nome; more → try to detect
     return rows
@@ -39,7 +39,7 @@ async function parseXlsx(file) {
     return parseTable(asCsv);
 }
 
-export default function CompetenciasImportModal({ onClose, onImport, existing }) {
+export default function AprendizagemsImportModal({ onClose, onImport, existing }) {
     const [text, setText] = useState("");
     const [items, setItems] = useState([]);
     const [error, setError] = useState("");
@@ -77,7 +77,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
     }
 
     async function submit() {
-        if (!items.length) { setError("Nenhuma competência detetada."); return; }
+        if (!items.length) { setError("Nenhuma aprendizagem detetada."); return; }
         // Assign automatic codes if missing
         const existingCodes = new Set((existing || []).map((c) => c.code));
         let n = 1;
@@ -111,7 +111,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
                             <Upload size={12} /> Importar
                         </div>
-                        <h2 className="font-serif text-2xl text-brand-forest">Competências essenciais</h2>
+                        <h2 className="font-serif text-2xl text-brand-forest">Aprendizagens essenciais</h2>
                     </div>
                     <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
                         <X size={20} />
@@ -119,7 +119,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
                 </div>
 
                 <p className="text-sm text-brand-charcoal/70 mb-4 leading-relaxed">
-                    Cole a lista (uma competência por linha) ou selecione um ficheiro <span className="font-mono text-xs">.xlsx</span> / <span className="font-mono text-xs">.csv</span> / <span className="font-mono text-xs">.txt</span>.
+                    Cole a lista (uma aprendizagem por linha) ou selecione um ficheiro <span className="font-mono text-xs">.xlsx</span> / <span className="font-mono text-xs">.csv</span> / <span className="font-mono text-xs">.txt</span>.
                     Se tiver duas colunas, deteta-se automaticamente <strong>Código</strong> e <strong>Nome</strong> (ou use apenas o descritor por linha e o código será gerado).
                 </p>
 
@@ -136,7 +136,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
                         data-testid="comp-file-input"
                     />
                     <div className="text-xs text-brand-sage self-center" data-testid="comp-preview-count">
-                        {items.length > 0 && `${items.length} competência(s) detetada(s)`}
+                        {items.length > 0 && `${items.length} aprendizagem(s) detetada(s)`}
                     </div>
                 </div>
 
@@ -167,7 +167,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
                 {error && <div className="mt-3 text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
                 {done != null && (
                     <div className="mt-3 text-sm text-[#2E6B2E] bg-[#E6F3E6] border border-[#B3D9B3] rounded-md px-3 py-2 flex items-center gap-2">
-                        <Check size={14} /> Importadas {done} competência(s).
+                        <Check size={14} /> Importadas {done} aprendizagem(s).
                     </div>
                 )}
 
@@ -180,7 +180,7 @@ export default function CompetenciasImportModal({ onClose, onImport, existing })
                         className="btn-primary flex-1 justify-center"
                     >
                         <Save size={14} />
-                        {busy ? "A importar..." : `Importar ${items.length || ""} competência(s)`}
+                        {busy ? "A importar..." : `Importar ${items.length || ""} aprendizagem(s)`}
                     </button>
                 </div>
             </div>

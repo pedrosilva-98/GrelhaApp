@@ -20,7 +20,7 @@ export default function Dashboard({ alunos, insts, dominios }) {
 
     const kpis = [
         { label: "Alunos", value: alunos.length, hint: "na turma" },
-        { label: "Instrumentos", value: insts.length, hint: "criados" },
+        { label: "Instrumentos de avaliação", value: insts.length, hint: "criados" },
         { label: "Média da turma", value: mediaGeral != null ? mediaGeral.toFixed(1) + "%" : "—", hint: "ponderada" },
         { label: "Taxa de sucesso", value: taxaSucesso != null ? Math.round(taxaSucesso * 100) + "%" : "—", hint: "≥ 50%" },
     ];
@@ -40,8 +40,8 @@ export default function Dashboard({ alunos, insts, dominios }) {
             <div className="card-surface overflow-hidden">
                 <div className="px-5 pt-5 pb-3 flex items-baseline justify-between flex-wrap gap-3">
                     <div>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage">Panorâmica</div>
-                        <h2 className="font-serif text-xl text-brand-forest">Alunos por domínio</h2>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage">Visão Geral</div>
+                        <h2 className="font-serif text-xl text-brand-forest">Avaliação dos alunos por Domínio</h2>
                     </div>
                     <div className="text-[11px] text-brand-sage flex gap-3 flex-wrap">
                         {dominios.map((d, i) => (

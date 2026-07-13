@@ -180,9 +180,9 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
                 <Sparkles size={12} /> Aprendizagens
             </div>
-            <h2 className="font-serif text-xl text-brand-forest mb-2">Competências essenciais</h2>
+            <h2 className="font-serif text-xl text-brand-forest mb-2">Aprendizagens essenciais</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
-                Configure as competências essenciais desta turma. Depois, pode associar uma competência a cada questão dos instrumentos. Pode adicionar manualmente ou importar a partir de Excel/CSV.
+                Configure as aprendizagens essenciais desta turma. Depois, pode associar uma aprendizagem a cada questão dos instrumentos. Pode adicionar manualmente ou importar a partir de Excel/CSV.
             </p>
 
             <div className="card-surface p-6 space-y-4">
@@ -198,7 +198,7 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
 
                 {items.length === 0 ? (
                     <div className="border-2 border-dashed border-crisp rounded-lg py-8 text-center text-brand-sage text-sm">
-                        Ainda não há competências definidas para esta turma.
+                        Ainda não há aprendizagens definidas para esta turma.
                     </div>
                 ) : (
                     <div className="space-y-3" data-testid="comp-list">
@@ -211,7 +211,7 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
                                     rows={3}
                                     value={c.nome}
                                     onChange={(e) => update(i, "nome", e.target.value)}
-                                    placeholder="Descreva a competência essencial..."
+                                    placeholder="Descreva a aprendizagem essencial..."
                                 />
                                 <button type="button" onClick={() => remove(i)} className="btn-danger-ghost mt-2 shrink-0" title="Remover">
                                     <X size={14} />
@@ -222,14 +222,14 @@ function CompetenciasSection({ competencias, saveCompetencias }) {
                 )}
 
                 <button type="button" onClick={add} data-testid="comp-add-btn" className="text-sm text-brand-forest hover:text-brand-forest-hover flex items-center gap-1">
-                    <Plus size={14} /> Adicionar competência
+                    <Plus size={14} /> Adicionar aprendizagem
                 </button>
 
                 {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
 
                 <button data-testid="comp-save-btn" onClick={save} disabled={!valid || busy} className="btn-primary w-full justify-center">
                     <Save size={16} />
-                    {saved ? "Guardado ✓" : busy ? "A guardar..." : "Guardar competências"}
+                    {saved ? "Guardado ✓" : busy ? "A guardar..." : "Guardar aprendizagens"}
                 </button>
             </div>
 

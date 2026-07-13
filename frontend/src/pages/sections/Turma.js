@@ -3,13 +3,15 @@ import { Trash2, UserPlus, Upload, X, Check } from "lucide-react";
 
 export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
     const [nome, setNome] = useState("");
+    const [dn, setDn] = useState("");
+    const [nProc, setNProc] = useState("");
     const [showImport, setShowImport] = useState(false);
 
     async function submit(e) {
         e.preventDefault();
-        if (!nome.trim()) return;
-        await addAluno(nome.trim());
-        setNome("");
+        if (!nome.trim() || !dn || !nProc.trim()) return;
+        await addAluno({ nome: nome.trim(), data_nascimento: dn, n_processo: nProc.trim() });
+        setNome(""); setDn(""); setNProc("");
     }
 
     return (
@@ -28,15 +30,41 @@ export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
                         <Upload size={14} /> Importar CSV
                     </button>
                 </div>
-                <form onSubmit={submit} className="flex gap-3">
-                    <input
-                        data-testid="aluno-nome-input"
-                        className="input-forest flex-1"
-                        placeholder="Nome completo"
-                        value={nome}
-                        onChange={(e) => setNome(e.target.value)}
-                    />
-                    <button data-testid="add-aluno-btn" type="submit" className="btn-primary whitespace-nowrap">
+                <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-[1fr_160px_160px_auto] gap-3 items-end">
+                    <div>
+                        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nome completo</label>
+                        <input
+                            data-testid="aluno-nome-input"
+                            className="input-forest"
+                            placeholder="Ex: Ana Silva"
+                            value={nome}
+                            onChange={(e) => setNome(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Data de nascimento</label>
+                        <input
+                            data-testid="aluno-dn-input"
+                            type="date"
+                            className="input-forest"
+                            value={dn}
+                            onChange={(e) => setDn(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nº de processo</label>
+                        <input
+                            data-testid="aluno-nproc-input"
+                            className="input-forest font-mono text-sm"
+                            placeholder="Ex: 12345"
+                            value={nProc}
+                            onChange={(e) => setNProc(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <button data-testid="add-aluno-btn" type="submit" className="btn-primary whitespace-nowrap h-[42px]">
                         <UserPlus size={16} /> Adicionar
                     </button>
                 </form>
@@ -48,16 +76,20 @@ export default function Turma({ alunos, addAluno, delAluno, addAlunosBulk }) {
                         <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
                             <th className="px-5 py-2.5 font-semibold w-16">Nº</th>
                             <th className="px-5 py-2.5 font-semibold">Nome</th>
+                            <th className="px-5 py-2.5 font-semibold w-36">Data de nascimento</th>
+                            <th className="px-5 py-2.5 font-semibold w-32">Nº processo</th>
                             <th className="px-5 py-2.5 font-semibold w-16"></th>
                         </tr>
                     </thead>
                     <tbody data-testid="alunos-list">
                         {alunos.length === 0 ? (
-                            <tr><td colSpan={3} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
+                            <tr><td colSpan={5} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
                         ) : alunos.map((a, i) => (
                             <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
                                 <td className="px-5 py-3 font-mono text-xs text-brand-sage tabular-nums">{String(i + 1).padStart(2, "0")}</td>
                                 <td className="px-5 py-3 font-medium text-brand-charcoal">{a.nome}</td>
+                                <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-PT") : "—"}</td>
+                                <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.n_processo || "—"}</td>
                                 <td className="px-5 py-3 text-right">
                                     <button data-testid={`del-aluno-${a.id}`} onClick={() => delAluno(a.id)} className="btn-danger-ghost" title="Eliminar">
                                         <Trash2 size={14} />

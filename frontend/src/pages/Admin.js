@@ -10,7 +10,7 @@ export default function Admin() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [error, setError] = useState("");
-    const [form, setForm] = useState({ nome: "", email: "", password: "" });
+    const [form, setForm] = useState({ nome: "", email: "", password: "", agrupamento: "" });
     const [creating, setCreating] = useState(false);
     const [justCreated, setJustCreated] = useState(null);
     const [resetTarget, setResetTarget] = useState(null);
@@ -34,7 +34,7 @@ export default function Admin() {
         try {
             await api.post("/admin/teachers", form);
             setJustCreated({ email: form.email, password: form.password });
-            setForm({ nome: "", email: "", password: "" });
+            setForm({ nome: "", email: "", password: "", agrupamento: "" });
             setShowModal(false);
             await load();
         } catch (e) {
@@ -176,6 +176,10 @@ export default function Admin() {
                             O(A) docente irá depois criar as suas próprias turmas dentro da app.
                         </p>
                         <form onSubmit={submit} className="space-y-4" data-testid="new-teacher-form">
+                            <div>
+                                <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Nome do Agrupamento</label>
+                                <input required data-testid="teacher-agrupamento" className="input-forest" value={form.agrupamento} onChange={(e) => setForm((f) => ({ ...f, agrupamento: e.target.value }))} placeholder="Ex: Agrupamento de Escolas Sá da Bandeira" />
+                            </div>
                             <div>
                                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Nome</label>
                                 <input required data-testid="teacher-nome" className="input-forest" value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} placeholder="Ex: Joana Silva" />

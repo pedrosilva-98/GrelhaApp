@@ -81,10 +81,10 @@ export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     doc.save(`avaliacao_final_${safeName}.pdf`);
 }
 
-// ─── Relatório por instrumento (competências essenciais) ─────────────────────
-// Para cada aluno e cada competência presente no instrumento:
+// ─── Relatório por instrumento (aprendizagens essenciais) ─────────────────────
+// Para cada aluno e cada aprendizagem presente no instrumento:
 //   % = (Σ nota_i/10 × cot_i) / (Σ cot_i) × 100
-// Assinala em vermelho as competências com < 60%.
+// Assinala em vermelho as aprendizagens com < 60%.
 export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento }) {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const now = new Date();
@@ -99,7 +99,7 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(44, 74, 59);
-    doc.text("Relatório por competências", 40, 40);
+    doc.text("Relatório por aprendizagens", 40, 40);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
@@ -115,7 +115,7 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
         doc.setFontSize(11);
         doc.setTextColor(158, 57, 33);
         doc.text(
-            "Este instrumento ainda não tem competências associadas às questões. Edite o instrumento e atribua uma competência a cada questão para gerar este relatório.",
+            "Este instrumento ainda não tem aprendizagens associadas às questões. Edite o instrumento e atribua uma aprendizagem a cada questão para gerar este relatório.",
             40, 100, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
         );
         doc.save(`relatorio_${instrumento.nome.replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}.pdf`);
@@ -126,13 +126,13 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
     doc.setFontSize(9);
     doc.setTextColor(90, 100, 100);
     doc.setFont("helvetica", "bold");
-    doc.text("Desempenho por competência (percentagem obtida por cada aluno):", 40, 88);
+    doc.text("Desempenho por aprendizagem (percentagem obtida por cada aluno):", 40, 88);
     doc.setFont("helvetica", "normal");
     const startY = 102;
 
-    // Table: rows = competências, cols = "Competência" + alunos + Média
+    // Table: rows = aprendizagens, cols = "Aprendizagem" + alunos + Média
     const alunoHeaders = alunos.map((a) => a.nome);
-    const head = [["#", "Competência", ...alunoHeaders, "Média"]];
+    const head = [["#", "Aprendizagem", ...alunoHeaders, "Média"]];
 
     const cellStyles = {}; // { rowIdx: { colIdx: styles } }
     const body = compsInInstrumento.map((code, rowIdx) => {
@@ -153,7 +153,7 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
             }
             row.push(pct != null ? pct.toFixed(1) + "%" : "—");
             if (pct != null) values.push(pct);
-            // Column index in body: 2 + colOffset (after # and Competência)
+            // Column index in body: 2 + colOffset (after # and Aprendizagem)
             if (pct != null && pct < 60) {
                 cellStyles[rowIdx][2 + colOffset] = { fillColor: [252, 218, 210], textColor: [138, 26, 26], fontStyle: "bold" };
             }
@@ -227,8 +227,8 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
     const pageH = doc.internal.pageSize.getHeight();
     doc.setFontSize(8);
     doc.setTextColor(150, 155, 145);
-    doc.text("Células a vermelho: aluno abaixo de 60% da cotação nessa competência.", 40, pageH - 32);
-    doc.text("Relatório por competências · gerado automaticamente", 40, pageH - 20);
+    doc.text("Células a vermelho: aluno abaixo de 60% da cotação nessa aprendizagem.", 40, pageH - 32);
+    doc.text("Relatório por aprendizagens · gerado automaticamente", 40, pageH - 20);
 
     const safeName = `${(instrumento.nome || "instrumento").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
     doc.save(`relatorio_${safeName}.pdf`);
