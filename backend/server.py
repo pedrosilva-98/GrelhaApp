@@ -161,7 +161,7 @@ class ParametroOD(BaseModel):
 class TurmaConfigUpdate(BaseModel):
     semestres: Optional[Dict[str, SemestreConfig]] = None       # keys "1" and "2"
     parametros_od: Optional[List[ParametroOD]] = None
-    meta_sucesso: Optional[float] = Field(default=None, ge=0, le=100)
+    meta_sucesso: Optional[float] = None
 
 class AlunoIn(BaseModel):
     nome: str
@@ -426,6 +426,8 @@ async def update_turma_config(turma_id: str, body: TurmaConfigUpdate, user: dict
             for p in body.parametros_od
         ]
     if body.meta_sucesso is not None:
+        if body.meta_sucesso < 0 or body.meta_sucesso > 100:
+            raise HTTPException(status_code=400, detail="Meta de sucesso deve estar entre 0 e 100%")
         updates["meta_sucesso"] = float(body.meta_sucesso)
     if updates:
         await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": updates})

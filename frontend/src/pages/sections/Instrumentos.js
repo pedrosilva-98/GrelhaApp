@@ -272,7 +272,7 @@ export default function Instrumentos({
                                                     onChange={(e) => updateQ(i, "dom", e.target.value)}
                                                     style={{ color: domByCode[q.dom]?.color }}
                                                 >
-                                                    {dominios.map((d) => <option key={d.code} value={d.code}>{d.code} — {d.nome}</option>)}
+                                                    {dominios.map((d) => <option key={d.code} value={d.code}>{`${d.code} — ${d.nome}`}</option>)}
                                                 </select>
                                             </div>
                                             <div>

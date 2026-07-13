@@ -45,16 +45,19 @@ Web app "Grelha de Avaliação" para professores em Portugal com auth JWT (React
 - Exportação PDF landscape.
 
 ## Changelog
-- **iter 6** — Duplicar turma; renomear turma via UI; alteração de palavra-passe pelo professor; redefinição pelo admin; "esqueci-me" link com instruções; importação CSV de alunos (`/api/alunos/bulk`); atalhos de teclado em Lançar Notas.
-- **iter 4** — Domínios editáveis; edição de instrumentos; notas 0-10; nova credencial admin.
-- **iter 3** — Múltiplas turmas por professor.
-- **iter 1/2** — MVP + fix ObjectId.
+- **iter 6 (Fase 2 · Fev/2026)** — Semestres (datas + pesos, soma 100%) e Meta de Sucesso do Agrupamento por turma; Parâmetros de Observação Direta (rubrica editável para trabalhos individuais/grupo); Instrumentos ganharam campo `semestre` (1/2) e secção `observacao_direta` (nota 0-10 por parâmetro + domínio associado); validação de data contra o intervalo do semestre selecionado (backend + frontend); Redesign das Questões em cartões verticais com Nº, Domínio, Cotação, Aprendizagem (cinza quando vazio); Dashboard com filtro Todo o ano / 1º / 2º Semestre e KPI Média com hint da meta (verde ≥ meta / vermelho abaixo); novo endpoint `PUT /api/turmas/{id}/config`.
+- **iter 5 (Fase 1)** — Agrupamento por professor; Data de nascimento + Nº de processo para alunos; nomenclatura "Aprendizagens Essenciais" padronizada.
+- **iter 4** — MongoDB Atlas; fix escala 0-10; import Excel/CSV das aprendizagens; PDFs por aprendizagem (linhas transpostas).
+- **iter 3** — Duplicar turma; renomear; alteração/reset de palavra-passe; importação CSV de alunos; atalhos de teclado em Lançar Notas.
+- **iter 2** — Domínios editáveis; edição de instrumentos; notas 0-10.
+- **iter 1** — MVP + múltiplas turmas + fix ObjectId.
 
 ## Backlog
+- **P1 (Fase 3)** — Perfil do Aluno (botão "Olho" na Turma): dados do aluno, avaliação por domínio, Radar Chart (Recharts) e tabela de Educação Especial (medidas Universais/Adicionais/Seletivas).
+- **P1 (Fase 3)** — PDFs individuais por Aprendizagem Essencial: seletor de alunos → um PDF por aluno com percentagens de domínio no nome (ex.: "Pedro Miguel (CP-89%, RRP-20%)").
 - **P2** — Vista comparativa entre turmas do mesmo professor.
-- **P3** — Recuperação de palavra-passe self-service via email (requer serviço externo).
-- **P3** — Anexos/observações qualitativas por instrumento.
-- **P3** — Backup/exportação JSON dos dados.
+- **P3** — Recuperação de palavra-passe self-service via email.
+- **P3** — Anexos/observações qualitativas por instrumento; backup/exportação JSON.
 
 ## Credenciais
 `passilva2005@gmail.com` / `!grelhaadmin2005!` (admin, auto-seeded via `/app/backend/.env`).

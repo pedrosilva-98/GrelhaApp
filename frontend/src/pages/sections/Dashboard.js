@@ -67,7 +67,7 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                         <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-3">{k.label}</div>
                         <div className={`font-serif text-3xl tabular-nums ${
                             k.highlight === "ok" ? "text-[#2E6B2E]" : k.highlight === "low" ? "text-[#9E3921]" : "text-brand-forest"
-                        }`} data-testid={`kpi-${k.label.replace(/\s+/g, "-").toLowerCase()}`}>{k.value}</div>
+                        }`} data-testid={`kpi-${k.label.replace(/\s+/g, "-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`}>{k.value}</div>
                         <div className="text-[11px] text-brand-charcoal/50 mt-1">{k.hint}</div>
                     </div>
                 ))}
