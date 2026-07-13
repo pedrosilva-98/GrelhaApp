@@ -167,8 +167,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
 
                             <div>
                                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-2">Radar dos domínios</div>
-                                <div className="w-full h-72 bg-page rounded-md border border-crisp p-2" data-testid="perfil-radar">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                <div className="w-full h-72 bg-page rounded-md border border-crisp p-2" data-testid="perfil-radar" style={{ minHeight: 260 }}>
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={260}>
                                         <RadarChart data={radarData} outerRadius="70%">
                                             <PolarGrid stroke="#E5E3DB" />
                                             <PolarAngleAxis dataKey="dominio" tick={{ fill: "#5A5F55", fontSize: 12 }} />

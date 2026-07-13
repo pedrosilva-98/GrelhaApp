@@ -45,7 +45,8 @@ Web app "Grelha de Avaliação" para professores em Portugal com auth JWT (React
 - Exportação PDF landscape.
 
 ## Changelog
-- **iter 6 (Fase 2 · Fev/2026)** — Semestres (datas + pesos, soma 100%) e Meta de Sucesso do Agrupamento por turma; Parâmetros de Observação Direta (rubrica editável para trabalhos individuais/grupo); Instrumentos ganharam campo `semestre` (1/2) e secção `observacao_direta` (nota 0-10 por parâmetro + domínio associado); validação de data contra o intervalo do semestre selecionado (backend + frontend); Redesign das Questões em cartões verticais com Nº, Domínio, Cotação, Aprendizagem (cinza quando vazio); Dashboard com filtro Todo o ano / 1º / 2º Semestre e KPI Média com hint da meta (verde ≥ meta / vermelho abaixo); novo endpoint `PUT /api/turmas/{id}/config`.
+- **iter 7 (Fase 3 · Fev/2026)** — Perfil do Aluno como modal completo (botão "Olho" na Turma) com 3 tabs: **Dados** (edição de nome/DN/nº processo + mini-stats), **Avaliação** (tabela por domínio + **Radar Chart** com Recharts) e **Educação Especial** (Medidas Universais/Adicionais/Seletivas, DL 54/2018); novo endpoint `PUT /api/alunos/{id}` com `medidas` persistidas por aluno. Exportação **PDF por Aprendizagens** convertida em **PDFs individuais**: clicar no ícone abre um seletor de alunos (com "Selecionar/Desmarcar todos") e gera um PDF por aluno selecionado, com o nome do aluno seguido das percentagens dos domínios (ex.: `Pedro Miguel (CP-89%, RRP-20%)`).
+- **iter 6 (Fase 2)** — Semestres (datas + pesos), Meta de Sucesso do Agrupamento, Parâmetros de Observação Direta, campo `semestre` e `observacao_direta` nos Instrumentos, validação de data contra intervalo do semestre, redesign vertical das Questões, filtro por semestre e KPI da meta no Dashboard, endpoint `PUT /api/turmas/{id}/config`.
 - **iter 5 (Fase 1)** — Agrupamento por professor; Data de nascimento + Nº de processo para alunos; nomenclatura "Aprendizagens Essenciais" padronizada.
 - **iter 4** — MongoDB Atlas; fix escala 0-10; import Excel/CSV das aprendizagens; PDFs por aprendizagem (linhas transpostas).
 - **iter 3** — Duplicar turma; renomear; alteração/reset de palavra-passe; importação CSV de alunos; atalhos de teclado em Lançar Notas.
@@ -53,9 +54,8 @@ Web app "Grelha de Avaliação" para professores em Portugal com auth JWT (React
 - **iter 1** — MVP + múltiplas turmas + fix ObjectId.
 
 ## Backlog
-- **P1 (Fase 3)** — Perfil do Aluno (botão "Olho" na Turma): dados do aluno, avaliação por domínio, Radar Chart (Recharts) e tabela de Educação Especial (medidas Universais/Adicionais/Seletivas).
-- **P1 (Fase 3)** — PDFs individuais por Aprendizagem Essencial: seletor de alunos → um PDF por aluno com percentagens de domínio no nome (ex.: "Pedro Miguel (CP-89%, RRP-20%)").
 - **P2** — Vista comparativa entre turmas do mesmo professor.
+- **P2** — Mini-gráfico de evolução do aluno entre 1º e 2º Semestre no Perfil.
 - **P3** — Recuperação de palavra-passe self-service via email.
 - **P3** — Anexos/observações qualitativas por instrumento; backup/exportação JSON.
 
