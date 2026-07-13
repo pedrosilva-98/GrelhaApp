@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend-only bug-fix verification for Aprendizagens essenciais (Config). All 4 review points confirmed working against phase2test@teste.pt / Matemática 7A on the public URL. (1) Save button starts ENABLED with 3 existing rows, becomes DISABLED right after clicking 'Adicionar aprendizagem' (empty name), and immediately becomes ENABLED after typing a name in comp-nome-{new_idx} — this is the exact bug fix (validation now only checks uniqueness of NON-EMPTY codes + all names filled). (2) After clicking 'Guardar aprendizagens', the aprendizagem persists across a full page reload (auto-assigned AE code applied). (3) Import modal opens from comp-import-btn, pasted 2-line CSV ('TEST_AEX1, ...\\nTEST_AEX2, ...') → preview count correctly shows '2 aprendizagem(s) detetada(s)', submit is enabled, modal auto-closes ~1.2s after import, and both new items persist after reload (total row count went from 4 → 6). (4) No regression observed on other Config sections (Semestres shown at 100% Válido, page renders normally).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Config.js CompetenciasSection: `handleImport` merges + immediately calls saveAprendizagems, but does NOT catch/display errors (unlike save()). If PUT /api/turmas/{id}/competencias fails during import, the modal will surface the error via its own try/catch and message. Fine but slightly inconsistent.",
+    "CompetenciasImportModal.parseTable: header detection uses `codeIdx >= 0 || nomeIdx >= 0` — if a user pastes 2 columns without header, first-row is treated as data (code,nome). Works for the review's test case but subtle. Existing behaviour, not a regression.",
+    "AprendizagemsImportModal auto-code generator does not consider codes that appear later in the `items` array (only `existing` + previously generated). In practice items rarely have their own codes if not from CSV headers, so no observed collision — but a defensive fix could pre-populate existingCodes with `items.map(c=>c.code).filter(Boolean)` too."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100% – 4/4 review points confirmed"},
+  "test_credentials": "Teacher: phase2test@teste.pt / teste123 (turma Matemática 7A)",
+  "seed_data_creation": "Added 3 TEST_-prefixed aprendizagens to the phase2test turma: TEST_it9_bug_verify_3 (via manual add + save, auto-coded AEn), and 2 more via CSV import (codes TEST_AEX1, TEST_AEX2). Total went from 3 → 6 rows. These remain in the turma and are visible as TEST_-prefixed items for manual removal if needed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bug fix in Config.js CompetenciasSection is confirmed. Key data-testids verified: tab-config, comp-add-btn, comp-nome-{i}, comp-save-btn, comp-import-btn, comp-textarea, comp-preview-count, comp-import-submit, comp-list, comp-row-{i}. Login flow: use page.get_by_role('button', name='Entrar').click() — a callable name= param breaks Playwright. The turma now has 6 aprendizagens (3 legacy + 3 TEST_ added this iteration)."
+}

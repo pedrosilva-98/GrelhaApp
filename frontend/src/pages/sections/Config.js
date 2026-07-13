@@ -362,8 +362,9 @@ function CompetenciasSection({ competencias, saveAprendizagems }) {
 
     useEffect(() => { setItems(competencias || []); setError(""); }, [competencias]);
 
-    const codes = items.map((c) => (c.code || "").trim());
-    const codesUnique = new Set(codes).size === codes.length && codes.every((c) => c.length > 0);
+    // Codes are auto-assigned on save when empty; only require uniqueness among non-empty codes.
+    const nonEmptyCodes = items.map((c) => (c.code || "").trim()).filter(Boolean);
+    const codesUnique = new Set(nonEmptyCodes).size === nonEmptyCodes.length;
     const namesFilled = items.every((c) => (c.nome || "").trim().length > 0);
     const valid = codesUnique && namesFilled;
 
