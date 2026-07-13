@@ -45,19 +45,22 @@ Web app "Grelha de Avaliação" para professores em Portugal com auth JWT (React
 - Exportação PDF landscape.
 
 ## Changelog
-- **iter 7 (Fase 3 · Fev/2026)** — Perfil do Aluno como modal completo (botão "Olho" na Turma) com 3 tabs: **Dados** (edição de nome/DN/nº processo + mini-stats), **Avaliação** (tabela por domínio + **Radar Chart** com Recharts) e **Educação Especial** (Medidas Universais/Adicionais/Seletivas, DL 54/2018); novo endpoint `PUT /api/alunos/{id}` com `medidas` persistidas por aluno. Exportação **PDF por Aprendizagens** convertida em **PDFs individuais**: clicar no ícone abre um seletor de alunos (com "Selecionar/Desmarcar todos") e gera um PDF por aluno selecionado, com o nome do aluno seguido das percentagens dos domínios (ex.: `Pedro Miguel (CP-89%, RRP-20%)`).
-- **iter 6 (Fase 2)** — Semestres (datas + pesos), Meta de Sucesso do Agrupamento, Parâmetros de Observação Direta, campo `semestre` e `observacao_direta` nos Instrumentos, validação de data contra intervalo do semestre, redesign vertical das Questões, filtro por semestre e KPI da meta no Dashboard, endpoint `PUT /api/turmas/{id}/config`.
-- **iter 5 (Fase 1)** — Agrupamento por professor; Data de nascimento + Nº de processo para alunos; nomenclatura "Aprendizagens Essenciais" padronizada.
-- **iter 4** — MongoDB Atlas; fix escala 0-10; import Excel/CSV das aprendizagens; PDFs por aprendizagem (linhas transpostas).
-- **iter 3** — Duplicar turma; renomear; alteração/reset de palavra-passe; importação CSV de alunos; atalhos de teclado em Lançar Notas.
+- **iter 8 (OD refactor + Excel import · Fev/2026)** — Observação Direta movida para fora do formulário de instrumento: aparece agora como painel próprio na página **Instrumentos de avaliação**, com uma linha por parâmetro (nome + Domínio + contagem de notas + botão "Classificar"). O modal de classificação permite escolher o Domínio, o Semestre (opcional) e atribuir nota 0-10 a cada aluno da turma. Em Configurar, o subtítulo "Trabalhos individuais ou de grupo" foi removido e o selector de domínio saiu da linha do parâmetro (linha inteira só para o nome). Novo endpoint `PUT /api/turmas/{id}/od/{parametro_id}`; os cálculos de média (Dashboard, Perfil e PDFs) passam a incluir as notas de OD via `turma.od_avaliacoes`. Importação de alunos aceita agora **Excel (.xlsx)** além de CSV, com deteção automática das colunas Nome / Data Nascimento / Nº Processo e conversão de datas PT (DD/MM/AAAA) e datas em série do Excel para ISO.
+- **iter 7 (Fase 3)** — Perfil do Aluno (botão "Olho") com tabs Dados / Avaliação (Radar) / Educação Especial; endpoint `PUT /api/alunos/{id}` com `medidas`; PDFs individuais por aprendizagem com nome + percentagens dos domínios.
+- **iter 6 (Fase 2)** — Semestres, Meta de sucesso, Parâmetros OD, campo `semestre` nos Instrumentos, filtro de semestre no Dashboard, endpoint `PUT /api/turmas/{id}/config`.
+- **iter 5 (Fase 1)** — Agrupamento por professor; DN + Nº Processo por aluno; nomenclatura "Aprendizagens Essenciais".
+- **iter 4** — MongoDB Atlas; escala 0-10; import Excel das aprendizagens; PDFs transpostos.
+- **iter 3** — Duplicar/renomear turma; alteração/reset de palavra-passe; import CSV; atalhos de teclado.
 - **iter 2** — Domínios editáveis; edição de instrumentos; notas 0-10.
 - **iter 1** — MVP + múltiplas turmas + fix ObjectId.
 
 ## Backlog
 - **P2** — Vista comparativa entre turmas do mesmo professor.
-- **P2** — Mini-gráfico de evolução do aluno entre 1º e 2º Semestre no Perfil.
+- **P2** — Mini-gráfico de evolução 1º ↔ 2º Semestre no Perfil do Aluno.
+- **P3** — Envio automático dos PDFs individuais aos Encarregados de Educação (Resend/SendGrid).
 - **P3** — Recuperação de palavra-passe self-service via email.
 - **P3** — Anexos/observações qualitativas por instrumento; backup/exportação JSON.
+- **Cleanup** — Remover campo dead-code `instrumento.observacao_direta` do backend (após 1 release estável).
 
 ## Credenciais
 `passilva2005@gmail.com` / `!grelhaadmin2005!` (admin, auto-seeded via `/app/backend/.env`).

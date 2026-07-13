@@ -30,7 +30,7 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         onClick={() => setShowImport(true)}
                         className="btn-ghost text-sm"
                     >
-                        <Upload size={14} /> Importar CSV
+                        <Upload size={14} /> Importar Excel/CSV
                     </button>
                 </div>
                 <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-[1fr_160px_160px_auto] gap-3 items-end">
