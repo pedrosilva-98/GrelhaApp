@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ResetPasswordModal from "@/components/ResetPasswordModal";
-import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound } from "lucide-react";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, NotebookPen } from "lucide-react";
 
 export default function Admin() {
     const { user, logout } = useAuth();
@@ -59,8 +59,8 @@ export default function Admin() {
             <header className="border-b border-crisp bg-surface">
                 <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-md bg-brand-forest flex items-center justify-center">
-                            <span className="text-page font-serif text-lg">G</span>
+                        <div className="w-9 h-9 rounded-lg bg-brand-forest flex items-center justify-center shadow-sm ring-1 ring-brand-forest/20 rotate-[-3deg]">
+                            <NotebookPen size={18} className="text-brand-ochre" strokeWidth={2.2} />
                         </div>
                         <div>
                             <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Painel</div>

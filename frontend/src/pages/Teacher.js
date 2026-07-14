@@ -11,7 +11,7 @@ import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
 import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -227,8 +227,8 @@ export default function Teacher() {
                 <div className="max-w-6xl mx-auto px-6 sm:px-10 pt-5 pb-4">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-md bg-brand-forest flex items-center justify-center flex-shrink-0">
-                                <span className="text-page font-serif text-xl leading-none">G</span>
+                            <div className="w-10 h-10 rounded-lg bg-brand-forest flex items-center justify-center flex-shrink-0 shadow-sm ring-1 ring-brand-forest/20 rotate-[-3deg]">
+                                <NotebookPen size={20} className="text-brand-ochre" strokeWidth={2.2} />
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Agrupamento · 2025/2026</div>
@@ -474,8 +474,8 @@ function SimpleHeader({ user, onLogout }) {
         <header className="bg-surface border-b border-crisp">
             <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-md bg-brand-forest flex items-center justify-center">
-                        <span className="text-page font-serif text-xl">G</span>
+                    <div className="w-10 h-10 rounded-lg bg-brand-forest flex items-center justify-center shadow-sm ring-1 ring-brand-forest/20 rotate-[-3deg]">
+                        <NotebookPen size={20} className="text-brand-ochre" strokeWidth={2.2} />
                     </div>
                     <div>
                         <div className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Bem-vindo(a)</div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NotebookPen } from "lucide-react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
@@ -34,11 +35,11 @@ export default function Login() {
             {/* Left panel — form */}
             <div className="flex flex-col justify-between px-8 sm:px-12 lg:px-16 py-10">
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-md bg-brand-forest flex items-center justify-center">
-                        <span className="text-page font-serif text-lg leading-none">G</span>
+                    <div className="w-10 h-10 rounded-lg bg-brand-forest flex items-center justify-center shadow-sm ring-1 ring-brand-forest/20 rotate-[-3deg]">
+                        <NotebookPen size={20} className="text-brand-ochre" strokeWidth={2.2} />
                     </div>
                     <div className="flex flex-col leading-tight">
-                        <span className="font-serif text-lg text-brand-charcoal">Grelha</span>
+                        <span className="font-serif text-xl text-brand-charcoal tracking-tight">Caderno</span>
                         <span className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Avaliação Docente</span>
                     </div>
                 </div>
@@ -112,7 +113,7 @@ export default function Login() {
                 </div>
 
                 <div className="text-[11px] text-brand-sage tracking-wider">
-                    © {new Date().getFullYear()} · Grelha de Avaliação
+                    © {new Date().getFullYear()} · Caderno · Avaliação Docente
                 </div>
             </div>
 

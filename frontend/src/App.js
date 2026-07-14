@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -13,6 +14,13 @@ function RootRedirect() {
 }
 
 export default function App() {
+    // Persist the browser title against any external overrides.
+    useEffect(() => {
+        const desired = "Caderno · Avaliação Docente";
+        document.title = desired;
+        const id = setInterval(() => { if (document.title !== desired) document.title = desired; }, 1000);
+        return () => clearInterval(id);
+    }, []);
     return (
         <AuthProvider>
             <BrowserRouter>
