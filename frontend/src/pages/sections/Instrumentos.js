@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save } from "lucide-react";
-import { TIPOS_INSTRUMENTO, domColor } from "@/lib/grelha";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -106,7 +106,6 @@ export default function Instrumentos({
         <div className="space-y-8 anim-in" data-testid="instrumentos-view">
             <div className="flex items-center justify-between">
                 <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Avaliação</div>
                     <h2 className="font-serif text-xl text-brand-forest">Instrumentos de avaliação</h2>
                 </div>
                 {!editing && (
@@ -142,6 +141,9 @@ export default function Instrumentos({
                             <select data-testid="inst-tipo" className="input-forest" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))}>
                                 {TIPOS_INSTRUMENTO.map((t) => <option key={t} value={t}>{t}</option>)}
                             </select>
+                            {TIPOS_SEM_NOTA_FINAL.includes(form.tipo) && (
+                                <div className="text-[11px] text-brand-sage mt-1 italic">Não conta para a avaliação final.</div>
+                            )}
                         </div>
                         <div>
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Semestre</label>
@@ -256,6 +258,9 @@ export default function Instrumentos({
                                 <td className="px-5 py-3 font-medium text-brand-charcoal">{inst.nome}</td>
                                 <td className="px-5 py-3">
                                     <span className="text-[11px] bg-page border border-crisp text-brand-charcoal/80 px-2 py-0.5 rounded-full">{inst.tipo}</span>
+                                    {TIPOS_SEM_NOTA_FINAL.includes(inst.tipo) && (
+                                        <span className="block text-[10px] text-brand-sage italic mt-0.5">não conta p/ final</span>
+                                    )}
                                 </td>
                                 <td className="px-5 py-3 tabular-nums font-mono text-xs">{inst.semestre ? `${inst.semestre}º` : "—"}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70">{fmtDate(inst.data)}</td>
@@ -288,9 +293,6 @@ export default function Instrumentos({
                 <div data-testid="od-panel">
                     <div className="flex items-baseline justify-between mb-3">
                         <div>
-                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                                <Sparkles size={12} /> Rubrica
-                            </div>
                             <h2 className="font-serif text-xl text-brand-forest">Observação Direta</h2>
                         </div>
                         <div className="text-xs text-brand-charcoal/60">{parametrosOD.length} parâmetro(s) · {alunos.length} aluno(s)</div>

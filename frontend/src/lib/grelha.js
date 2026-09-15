@@ -15,7 +15,22 @@ export const TIPOS_INSTRUMENTO = [
     "Questão de Aula",
     "Trabalhos Individuais ou de Grupo",
     "Avaliação de Diagnóstico",
+    "Rubricas",
+    "Trabalhos de Pesquisa e Relatórios",
 ];
+
+// Tipos cujos resultados não contam para a avaliação final — continuam a admitir
+// classificações e geração de relatórios, tal como os restantes tipos de instrumento.
+export const TIPOS_SEM_NOTA_FINAL = ["Avaliação Formativa", "Avaliação de Diagnóstico"];
+
+export function contaParaFinal(inst) {
+    return !TIPOS_SEM_NOTA_FINAL.includes(inst?.tipo);
+}
+
+// Filtra instrumentos que contam para a avaliação final — usar antes de agregar médias globais.
+export function instsParaFinal(insts) {
+    return (insts || []).filter(contaParaFinal);
+}
 
 // Palette to pick colors for domains by index
 export const DOM_PALETTE = ["#2C4A3B", "#6B8BA4", "#D99E41", "#C86A53", "#8A9A86", "#7B4F8C", "#B0754F", "#446B84"];
@@ -140,4 +155,25 @@ export function calcMediaFinal(insts, dominios, alunoId, turma, sem) {
         }
     }
     return totalPond > 0 ? total / totalPond : null;
+}
+
+// ─── Escala 0-20 (10º/11º/12º ano) ────────────────────────────────────────────
+// Extrai o nível numérico de um texto de "ano" (ex: "10º" → 10).
+export function anoNivel(ano) {
+    const m = /(\d+)/.exec(String(ano || ""));
+    return m ? parseInt(m[1], 10) : null;
+}
+
+// Turmas de 10º, 11º ou 12º ano usam a escala 0-20 e deixam de ter avaliação qualitativa.
+export function isEscala20(turma) {
+    const n = anoNivel(turma?.ano);
+    return n != null && n >= 10 && n <= 12;
+}
+
+// Formata uma percentagem (0-100) na escala apropriada à turma:
+// 0-20 (arredondado) para 10º-12º ano, percentagem nos restantes.
+export function formatAvaliacao(pct, turma) {
+    if (pct == null || Number.isNaN(pct)) return "—";
+    if (isEscala20(turma)) return String(Math.round((pct / 100) * 20));
+    return pct.toFixed(1) + "%";
 }

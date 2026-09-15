@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Plus, Save, Trash2, Eye, GraduationCap, Radar as RadarIcon } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor } from "@/lib/grelha";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, instsParaFinal, isEscala20, formatAvaliacao } from "@/lib/grelha";
 import Badge from "@/components/Badge";
 
 const TABS = [
@@ -12,10 +12,12 @@ const TABS = [
 
 export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave }) {
     const dominios = turma?.dominios || [];
+    const escala20 = isEscala20(turma);
     const [tab, setTab] = useState("dados");
     const [nome, setNome] = useState(aluno.nome || "");
     const [dn, setDn] = useState(aluno.data_nascimento || "");
     const [nProc, setNProc] = useState(aluno.n_processo || "");
+    const [email, setEmail] = useState(aluno.email || "");
     const initialMedidas = aluno.medidas || { universais: [], adicionais: [], seletivas: [] };
     const [medidas, setMedidas] = useState({
         universais: initialMedidas.universais || [],
@@ -30,6 +32,7 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
         setNome(aluno.nome || "");
         setDn(aluno.data_nascimento || "");
         setNProc(aluno.n_processo || "");
+        setEmail(aluno.email || "");
         const m = aluno.medidas || { universais: [], adicionais: [], seletivas: [] };
         setMedidas({
             universais: m.universais || [],
@@ -38,8 +41,9 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
         });
     }, [aluno]);
 
-    const domsPct = useMemo(() => calcMediasDominioAluno(insts, aluno.id, dominios, turma), [insts, aluno.id, dominios, turma]);
-    const mediaFinal = useMemo(() => calcMediaFinal(insts, dominios, aluno.id, turma), [insts, dominios, aluno.id, turma]);
+    const finalInsts = useMemo(() => instsParaFinal(insts), [insts]);
+    const domsPct = useMemo(() => calcMediasDominioAluno(finalInsts, aluno.id, dominios, turma), [finalInsts, aluno.id, dominios, turma]);
+    const mediaFinal = useMemo(() => calcMediaFinal(finalInsts, dominios, aluno.id, turma), [finalInsts, dominios, aluno.id, turma]);
     const nivel = getNivel(mediaFinal);
     const radarData = dominios.map((d) => ({ dominio: d.code, valor: domsPct[d.code] != null ? Number(domsPct[d.code].toFixed(1)) : 0, label: d.nome }));
 
@@ -65,6 +69,7 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                 nome: nome.trim(),
                 data_nascimento: dn || "",
                 n_processo: nProc.trim(),
+                email: email.trim(),
                 medidas: clean,
             });
             setSaved(true);
@@ -124,11 +129,15 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                     <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nº de processo</label>
                                     <input data-testid="perfil-nproc" className="input-forest font-mono text-sm" value={nProc} onChange={(e) => setNProc(e.target.value)} />
                                 </div>
+                                <div className="sm:col-span-3">
+                                    <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Email do aluno</label>
+                                    <input data-testid="perfil-email" type="email" className="input-forest" placeholder="aluno@escola.pt" value={email} onChange={(e) => setEmail(e.target.value)} />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-crisp">
-                                <MiniStat label="Média final" value={mediaFinal != null ? mediaFinal.toFixed(1) + "%" : "—"} />
-                                <MiniStat label="Nível" value={nivel ? String(nivel.n) : "—"} />
+                                <MiniStat label="Média final" value={formatAvaliacao(mediaFinal, turma)} />
+                                {!escala20 && <MiniStat label="Nível" value={nivel ? nivel.label : "—"} />}
                                 <MiniStat label="Instrumentos c/ notas" value={insts.filter((i) => (i.notas || {})[aluno.id]).length} />
                                 <MiniStat label="Domínios avaliados" value={Object.values(domsPct).filter((v) => v != null).length + " / " + dominios.length} />
                             </div>
@@ -153,12 +162,12 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                                 <tr key={d.code} className="border-b border-crisp last:border-0">
                                                     <td className="px-4 py-2 font-mono text-xs" style={{ color: domColor(i) }}>{d.code}</td>
                                                     <td className="px-4 py-2 text-brand-charcoal/80">{d.nome}</td>
-                                                    <td className="px-4 py-2 text-right tabular-nums font-mono text-sm">{domsPct[d.code] != null ? domsPct[d.code].toFixed(1) + "%" : "—"}</td>
+                                                    <td className="px-4 py-2 text-right tabular-nums font-mono text-sm">{formatAvaliacao(domsPct[d.code], turma)}</td>
                                                 </tr>
                                             ))}
                                             <tr className="bg-page">
                                                 <td className="px-4 py-2 text-brand-forest font-serif" colSpan={2}>Média final</td>
-                                                <td className="px-4 py-2 text-right tabular-nums font-serif text-brand-forest">{mediaFinal != null ? mediaFinal.toFixed(1) + "%" : "—"}</td>
+                                                <td className="px-4 py-2 text-right tabular-nums font-serif text-brand-forest">{formatAvaliacao(mediaFinal, turma)}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -179,10 +188,12 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <span className="text-[11px] uppercase tracking-[0.2em] text-brand-sage">Nível qualitativo</span>
-                                <Badge v={mediaFinal} mode="number" />
-                            </div>
+                            {!escala20 && (
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[11px] uppercase tracking-[0.2em] text-brand-sage">Nível qualitativo</span>
+                                    <Badge v={mediaFinal} />
+                                </div>
+                            )}
                         </div>
                     )}
 

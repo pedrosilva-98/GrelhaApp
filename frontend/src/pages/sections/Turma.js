@@ -7,14 +7,15 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
     const [nome, setNome] = useState("");
     const [dn, setDn] = useState("");
     const [nProc, setNProc] = useState("");
+    const [email, setEmail] = useState("");
     const [showImport, setShowImport] = useState(false);
     const [perfilAluno, setPerfilAluno] = useState(null);
 
     async function submit(e) {
         e.preventDefault();
         if (!nome.trim() || !dn || !nProc.trim()) return;
-        await addAluno({ nome: nome.trim(), data_nascimento: dn, n_processo: nProc.trim() });
-        setNome(""); setDn(""); setNProc("");
+        await addAluno({ nome: nome.trim(), data_nascimento: dn, n_processo: nProc.trim(), email: email.trim() });
+        setNome(""); setDn(""); setNProc(""); setEmail("");
     }
 
     return (
@@ -33,7 +34,7 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         <Upload size={14} /> Importar Excel/CSV
                     </button>
                 </div>
-                <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-[1fr_160px_160px_auto] gap-3 items-end">
+                <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_140px_120px_1fr_auto] gap-3 items-end">
                     <div>
                         <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nome completo</label>
                         <input
@@ -67,6 +68,17 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                             required
                         />
                     </div>
+                    <div>
+                        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Email do aluno</label>
+                        <input
+                            data-testid="aluno-email-input"
+                            type="email"
+                            className="input-forest"
+                            placeholder="aluno@escola.pt"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                    </div>
                     <button data-testid="add-aluno-btn" type="submit" className="btn-primary whitespace-nowrap h-[42px]">
                         <UserPlus size={16} /> Adicionar
                     </button>
@@ -81,18 +93,20 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                             <th className="px-5 py-2.5 font-semibold">Nome</th>
                             <th className="px-5 py-2.5 font-semibold w-36">Data de nascimento</th>
                             <th className="px-5 py-2.5 font-semibold w-32">Nº processo</th>
+                            <th className="px-5 py-2.5 font-semibold">Email</th>
                             <th className="px-5 py-2.5 font-semibold w-16"></th>
                         </tr>
                     </thead>
                     <tbody data-testid="alunos-list">
                         {alunos.length === 0 ? (
-                            <tr><td colSpan={5} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
+                            <tr><td colSpan={6} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
                         ) : alunos.map((a, i) => (
                             <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
                                 <td className="px-5 py-3 font-mono text-xs text-brand-sage tabular-nums">{String(i + 1).padStart(2, "0")}</td>
                                 <td className="px-5 py-3 font-medium text-brand-charcoal">{a.nome}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-PT") : "—"}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.n_processo || "—"}</td>
+                                <td className="px-5 py-3 text-brand-charcoal/70 text-xs">{a.email || "—"}</td>
                                 <td className="px-5 py-3 text-right">
                                     <div className="flex justify-end gap-1">
                                         <button data-testid={`view-aluno-${a.id}`} onClick={() => setPerfilAluno(a)} className="btn-ghost !px-2 !py-1.5" title="Ver perfil">
@@ -131,11 +145,13 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
 const NOME_KEYS = ["nome", "aluno", "aluno(a)", "name", "nomes"];
 const DN_KEYS = ["data nascimento", "data de nascimento", "dn", "nascimento", "birthdate", "born", "data_nascimento"];
 const NPROC_KEYS = ["n processo", "nº processo", "no processo", "numero processo", "número processo", "nº de processo", "n de processo", "processo", "process", "n_processo", "num processo"];
+const EMAIL_KEYS = ["email", "e-mail", "correio eletronico", "correio eletrónico", "mail"];
 
 function normHeader(h) { return String(h || "").trim().toLowerCase().replace(/º|°/g, "").replace(/\./g, "").replace(/\s+/g, " "); }
 function isNomeKey(h) { return NOME_KEYS.includes(normHeader(h)); }
 function isDnKey(h) { const n = normHeader(h); return DN_KEYS.includes(n); }
 function isNprocKey(h) { const n = normHeader(h); return NPROC_KEYS.includes(n); }
+function isEmailKey(h) { const n = normHeader(h); return EMAIL_KEYS.includes(n); }
 
 // Convert an Excel date serial or string to ISO YYYY-MM-DD (or "" if unparseable).
 function toIsoDate(v) {
@@ -172,14 +188,15 @@ function parseTextRows(text) {
 function rowsToAlunos(rows) {
     if (!rows || !rows.length) return [];
     const firstRow = rows[0];
-    const headerHits = firstRow.filter((h) => isNomeKey(h) || isDnKey(h) || isNprocKey(h)).length;
-    let nomeIdx = 0, dnIdx = -1, npIdx = -1;
+    const headerHits = firstRow.filter((h) => isNomeKey(h) || isDnKey(h) || isNprocKey(h) || isEmailKey(h)).length;
+    let nomeIdx = 0, dnIdx = -1, npIdx = -1, emailIdx = -1;
     let dataRows = rows;
     if (headerHits > 0) {
         firstRow.forEach((h, i) => {
             if (isNomeKey(h)) nomeIdx = i;
             else if (isDnKey(h)) dnIdx = i;
             else if (isNprocKey(h)) npIdx = i;
+            else if (isEmailKey(h)) emailIdx = i;
         });
         dataRows = rows.slice(1);
     }
@@ -191,6 +208,7 @@ function rowsToAlunos(rows) {
             nome,
             data_nascimento: dnIdx >= 0 ? toIsoDate(r[dnIdx]) : "",
             n_processo: npIdx >= 0 ? String(r[npIdx] ?? "").trim() : "",
+            email: emailIdx >= 0 ? String(r[emailIdx] ?? "").trim() : "",
         });
     }
     return out;
@@ -274,6 +292,7 @@ function ImportCSVModal({ onClose, onImport }) {
                     <li><strong>Nome</strong> — <span className="text-brand-sage">nome, aluno, name…</span></li>
                     <li><strong>Data de nascimento</strong> — <span className="text-brand-sage">data nascimento, data de nascimento, dn…</span> (aceita <span className="font-mono">DD/MM/AAAA</span>)</li>
                     <li><strong>Nº de processo</strong> — <span className="text-brand-sage">nº processo, processo, número processo…</span></li>
+                    <li><strong>Email</strong> — <span className="text-brand-sage">email, e-mail…</span> (opcional)</li>
                 </ul>
 
                 <div className="flex gap-2 mb-3 flex-wrap items-center">
@@ -314,6 +333,7 @@ function ImportCSVModal({ onClose, onImport }) {
                                     <th className="px-3 py-1.5">Nome</th>
                                     <th className="px-3 py-1.5">DN</th>
                                     <th className="px-3 py-1.5">Nº Proc.</th>
+                                    <th className="px-3 py-1.5">Email</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -323,6 +343,7 @@ function ImportCSVModal({ onClose, onImport }) {
                                         <td className="px-3 py-1">{a.nome}</td>
                                         <td className="px-3 py-1 font-mono text-[11px] text-brand-charcoal/70">{a.data_nascimento || "—"}</td>
                                         <td className="px-3 py-1 font-mono text-[11px] text-brand-charcoal/70">{a.n_processo || "—"}</td>
+                                        <td className="px-3 py-1 font-mono text-[11px] text-brand-charcoal/70">{a.email || "—"}</td>
                                     </tr>
                                 ))}
                             </tbody>

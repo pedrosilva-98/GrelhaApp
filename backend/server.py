@@ -9,6 +9,7 @@ import uuid
 import logging
 import bcrypt
 import jwt
+import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict
 
@@ -115,6 +116,8 @@ class TeacherCreate(BaseModel):
     password: str
     nome: str
     agrupamento: str = ""
+    ano_letivo: str = ""
+    max_turmas: Optional[int] = Field(default=None, ge=1)
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -167,6 +170,7 @@ class AlunoIn(BaseModel):
     nome: str
     data_nascimento: Optional[str] = None
     n_processo: Optional[str] = None
+    email: Optional[str] = None
 
 class MedidasEducacaoEspecial(BaseModel):
     universais: List[str] = []
@@ -177,6 +181,7 @@ class AlunoUpdate(BaseModel):
     nome: Optional[str] = None
     data_nascimento: Optional[str] = None
     n_processo: Optional[str] = None
+    email: Optional[str] = None
     medidas: Optional[MedidasEducacaoEspecial] = None
 
 class AlunosBulkIn(BaseModel):
@@ -213,6 +218,14 @@ class InstrumentoUpdate(BaseModel):
 
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
+
+class EmailRelatorioIn(BaseModel):
+    destinatario: EmailStr
+    aluno_nome: str
+    assunto: str
+    corpo: Optional[str] = None
+    pdf_base64: str
+    filename: str = "relatorio.pdf"
 
 class ODAvaliacaoUpdate(BaseModel):
     dom: Optional[str] = None
@@ -266,6 +279,8 @@ async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
         "password_hash": hash_password(body.password),
         "nome": body.nome.strip(),
         "agrupamento": (body.agrupamento or "").strip(),
+        "ano_letivo": (body.ano_letivo or "").strip(),
+        "max_turmas": body.max_turmas,
         "role": "teacher",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -307,8 +322,17 @@ async def list_turmas(user: dict = Depends(require_teacher)):
             d["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
     return docs
 
+async def _check_max_turmas(user: dict):
+    max_turmas = user.get("max_turmas")
+    if max_turmas is None:
+        return
+    count = await db.turmas.count_documents({"prof_id": user["id"]})
+    if count >= max_turmas:
+        raise HTTPException(status_code=400, detail=f"Atingiu o número máximo de turmas permitido ({max_turmas}).")
+
 @api.post("/turmas")
 async def create_turma(body: TurmaCreate, user: dict = Depends(require_teacher)):
+    await _check_max_turmas(user)
     doc = {
         "id": str(uuid.uuid4()),
         "prof_id": user["id"],
@@ -325,6 +349,7 @@ async def create_turma(body: TurmaCreate, user: dict = Depends(require_teacher))
 
 @api.post("/turmas/{turma_id}/duplicate")
 async def duplicate_turma(turma_id: str, user: dict = Depends(require_teacher)):
+    await _check_max_turmas(user)
     src = await get_turma_or_404(turma_id, user)
     doc = {
         "id": str(uuid.uuid4()),
@@ -513,6 +538,7 @@ async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depe
         "nome": body.nome.strip(),
         "data_nascimento": (body.data_nascimento or "").strip(),
         "n_processo": (body.n_processo or "").strip(),
+        "email": (body.email or "").strip(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.alunos.insert_one(doc)
@@ -535,6 +561,7 @@ async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: 
                 "nome": nome,
                 "data_nascimento": (a.data_nascimento or "").strip(),
                 "n_processo": (a.n_processo or "").strip(),
+                "email": (a.email or "").strip(),
                 "created_at": now,
             })
     elif body.nomes:
@@ -567,6 +594,8 @@ async def update_aluno(aluno_id: str, body: AlunoUpdate, user: dict = Depends(re
         updates["data_nascimento"] = (body.data_nascimento or "").strip()
     if body.n_processo is not None:
         updates["n_processo"] = (body.n_processo or "").strip()
+    if body.email is not None:
+        updates["email"] = (body.email or "").strip()
     if body.medidas is not None:
         updates["medidas"] = {
             "universais": [m.strip() for m in body.medidas.universais if m and m.strip()],
@@ -720,6 +749,36 @@ async def delete_instrumento(inst_id: str, user: dict = Depends(require_teacher)
         raise HTTPException(status_code=404, detail="Instrumento não encontrado")
     await get_turma_or_404(inst["turma_id"], user)
     await db.instrumentos.delete_one({"id": inst_id})
+    return {"ok": True}
+
+# ─── Relatórios (envio por email) ──────────────────────────────────────────────
+
+@api.post("/relatorios/enviar-email")
+async def enviar_relatorio_email(body: EmailRelatorioIn, user: dict = Depends(require_teacher)):
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    mail_from = os.environ.get("MAIL_FROM", "")
+    if not api_key or not mail_from:
+        raise HTTPException(
+            status_code=503,
+            detail="O envio de email não está configurado. Defina RESEND_API_KEY e MAIL_FROM no servidor.",
+        )
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": mail_from,
+                "to": [body.destinatario],
+                "subject": body.assunto,
+                "html": body.corpo or f"<p>Segue em anexo o relatório de {body.aluno_nome}.</p>",
+                "attachments": [{"filename": body.filename, "content": body.pdf_base64}],
+            },
+            timeout=20,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Falha de ligação ao serviço de email: {e}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {resp.text[:300]}")
     return {"ok": True}
 
 # ─── Health ───────────────────────────────────────────────────────────────────

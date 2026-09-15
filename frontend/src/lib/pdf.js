@@ -1,12 +1,14 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX } from "@/lib/grelha";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX, instsParaFinal, isEscala20, formatAvaliacao } from "@/lib/grelha";
 // ─── Avaliação final (grelha da turma) ───────────────────────────────────────
 export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const now = new Date();
     const dateStr = now.toLocaleDateString("pt-PT");
     const dominios = turma.dominios || [];
+    const escala20 = isEscala20(turma);
+    const finalInsts = instsParaFinal(insts);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
@@ -31,17 +33,17 @@ export function exportGrelhaPDF({ user, turma, alunos, insts }) {
 
     const startY = 100 + (wrap.length - 1) * 10;
 
-    const head = [["#", "Aluno", ...dominios.map((d) => d.code), "Média", "Nível"]];
+    const head = [["#", "Aluno", ...dominios.map((d) => d.code), "Média", ...(escala20 ? [] : ["Nível"])]];
     const body = alunos.map((a, i) => {
-        const doms = calcMediasDominioAluno(insts, a.id, dominios, turma);
-        const media = calcMediaFinal(insts, dominios, a.id, turma);
+        const doms = calcMediasDominioAluno(finalInsts, a.id, dominios, turma);
+        const media = calcMediaFinal(finalInsts, dominios, a.id, turma);
         const nivel = getNivel(media);
         return [
             String(i + 1).padStart(2, "0"),
             a.nome,
-            ...dominios.map((d) => (doms[d.code] != null ? doms[d.code].toFixed(1) + "%" : "—")),
-            media != null ? media.toFixed(1) + "%" : "—",
-            nivel ? String(nivel.n) : "—",
+            ...dominios.map((d) => formatAvaliacao(doms[d.code], turma)),
+            formatAvaliacao(media, turma),
+            ...(escala20 ? [] : [nivel ? nivel.label : "—"]),
         ];
     });
 
@@ -66,8 +68,8 @@ export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(90, 100, 100);
-    const instText = insts.length
-        ? insts.map((i) => `• ${i.nome} (${i.tipo}${i.data ? " · " + i.data : ""})`).join("     ")
+    const instText = finalInsts.length
+        ? finalInsts.map((i) => `• ${i.nome} (${i.tipo}${i.data ? " · " + i.data : ""})`).join("     ")
         : "Sem instrumentos.";
     doc.text(doc.splitTextToSize(instText, doc.internal.pageSize.getWidth() - 80), 40, y + 10);
 
@@ -236,17 +238,27 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
 // Backwards-compat placeholder (some imports may still expect this name)
 export { calcDominioInstrumento };
 
+// Converts a Blob to a base64 string (no "data:" prefix) for sending as an email attachment.
+export function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",").pop());
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
 // ─── Relatório INDIVIDUAL por aluno (aprendizagens essenciais) ───────────────
 // One PDF per aluno. Header includes aluno name + domain % breakdown, e.g. "Pedro Miguel (CP-89%, RRP-20%)".
 // Body: table of aprendizagens x student % (single column) with <60% highlighted red.
-export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrumento, insts }) {
+function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts }) {
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const now = new Date();
     const dateStr = now.toLocaleDateString("pt-PT");
     const dominios = turma.dominios || [];
 
-    // Domain percentages for this aluno (across ALL instruments + turma OD, matches Dashboard)
-    const domsPct = calcMediasDominioAluno(insts || [instrumento], aluno.id, dominios, turma);
+    // Domain percentages for this aluno (across instrumentos que contam para a final + turma OD, matches Dashboard)
+    const domsPct = calcMediasDominioAluno(instsParaFinal(insts || [instrumento]), aluno.id, dominios, turma);
     const domBits = dominios
         .map((d) => (domsPct[d.code] != null ? `${d.code}-${Math.round(domsPct[d.code])}%` : `${d.code}-—`))
         .join(", ");
@@ -267,17 +279,24 @@ export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrum
     doc.setDrawColor(229, 227, 219);
     doc.line(40, 90, doc.internal.pageSize.getWidth() - 40, 90);
 
-    // Aluno label (bold, wrapped)
+    // "Situação atual" + aluno label (bold, wrapped)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(120, 128, 118);
+    doc.text("SITUAÇÃO ATUAL", 40, 104);
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(44, 74, 59);
     const wrapped = doc.splitTextToSize(alunoLabel, doc.internal.pageSize.getWidth() - 80);
-    doc.text(wrapped, 40, 108);
-    let startY = 118 + (wrapped.length - 1) * 14;
+    doc.text(wrapped, 40, 120);
+    let startY = 130 + (wrapped.length - 1) * 14;
 
     // Table rows: one per aprendizagem present in the instrumento
     const compsInInstrumento = Array.from(new Set((instrumento.questoes || []).map((q) => q.comp).filter(Boolean)));
     const compByCode = Object.fromEntries((turma.competencias || []).map((c) => [c.code, c]));
+
+    const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
 
     if (!compsInInstrumento.length) {
         doc.setFont("helvetica", "normal");
@@ -287,9 +306,7 @@ export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrum
             "Este instrumento ainda não tem aprendizagens associadas às questões. Edite o instrumento e atribua uma aprendizagem a cada questão.",
             40, startY + 12, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
         );
-        const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
-        doc.save(`relatorio_aluno_${safeName}.pdf`);
-        return;
+        return { doc, safeName };
     }
 
     const cellStyles = {};
@@ -337,6 +354,16 @@ export function exportInstrumentoRelatorioAlunoPDF({ user, turma, aluno, instrum
     doc.text("Células a vermelho: aprendizagem abaixo de 60% da cotação.", 40, pageH - 30);
     doc.text("Relatório individual · gerado automaticamente", 40, pageH - 18);
 
-    const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
+    return { doc, safeName };
+}
+
+export function exportInstrumentoRelatorioAlunoPDF(params) {
+    const { doc, safeName } = buildRelatorioAlunoDoc(params);
     doc.save(`relatorio_aluno_${safeName}.pdf`);
+}
+
+// Same report, returned as a Blob (for emailing) instead of triggering a download.
+export function getInstrumentoRelatorioAlunoPDFBlob(params) {
+    const { doc, safeName } = buildRelatorioAlunoDoc(params);
+    return { blob: doc.output("blob"), filename: `relatorio_aluno_${safeName}.pdf` };
 }

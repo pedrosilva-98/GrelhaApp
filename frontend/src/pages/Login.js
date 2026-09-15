@@ -39,18 +39,14 @@ export default function Login() {
                         <NotebookPen size={20} className="text-brand-ochre" strokeWidth={2.2} />
                     </div>
                     <div className="flex flex-col leading-tight">
-                        <span className="font-serif text-xl text-brand-charcoal tracking-tight">Caderno</span>
-                        <span className="text-[10px] uppercase tracking-[0.25em] text-brand-sage">Avaliação Docente</span>
+                        <span className="font-serif text-xl text-brand-charcoal tracking-tight">Caderno de Registo de Avaliação</span>
                     </div>
                 </div>
 
                 <div className="max-w-md w-full mx-auto lg:mx-0 anim-in">
                     <div className="text-xs uppercase tracking-[0.25em] text-brand-sage mb-4">Bem-vindo(a)</div>
-                    <h1 className="font-serif text-4xl sm:text-5xl leading-[1.05] text-brand-forest mb-4">
-                        Entre no seu <em className="not-italic text-brand-terracotta">caderno</em> de avaliações.
-                    </h1>
                     <p className="text-brand-charcoal/70 mb-8 leading-relaxed">
-                        Ferramenta profissional para gerir grelhas, instrumentos e domínios de avaliação, com privacidade por professor.
+                        Ferramenta profissional para gerir a avaliação, por domínios, dos seus alunos.
                     </p>
 
                     <form onSubmit={submit} className="space-y-4" data-testid="login-form">
@@ -113,7 +109,7 @@ export default function Login() {
                 </div>
 
                 <div className="text-[11px] text-brand-sage tracking-wider">
-                    © {new Date().getFullYear()} · Caderno · Avaliação Docente
+                    © {new Date().getFullYear()} · Caderno de Registo de Avaliação
                 </div>
             </div>
 
@@ -128,9 +124,9 @@ export default function Login() {
                 <div className="grain absolute inset-0" />
                 <div className="absolute bottom-10 left-10 right-10 text-page">
                     <div className="font-serif text-3xl leading-tight max-w-md">
-                        <em className="not-italic text-brand-ochre">&ldquo;Avaliar</em> é uma forma de ensinar.&rdquo;
+                        <em className="not-italic text-brand-ochre">&ldquo;Registar</em> é o primeiro passo para melhorar.&rdquo;
                     </div>
-                    <div className="mt-3 text-sm opacity-80">— pedagogia diferenciada</div>
+                    <div className="mt-3 text-sm opacity-80">— registo de avaliação</div>
                 </div>
             </div>
         </div>

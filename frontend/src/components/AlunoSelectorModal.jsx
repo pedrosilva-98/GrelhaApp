@@ -1,9 +1,20 @@
 import { useState } from "react";
-import { X, Users, FileText, CheckSquare, Square } from "lucide-react";
+import { X, Users, FileText, Mail, CheckSquare, Square } from "lucide-react";
 
-export default function AlunoSelectorModal({ alunos, title = "Selecionar alunos", subtitle, confirmLabel = "Gerar", onClose, onConfirm }) {
+export default function AlunoSelectorModal({
+    alunos,
+    title = "Selecionar alunos",
+    subtitle,
+    confirmLabel = "Gerar",
+    onClose,
+    onConfirm,
+    secondaryLabel,
+    onSecondaryConfirm,
+}) {
     const [selected, setSelected] = useState(new Set(alunos.map((a) => a.id)));
     const [busy, setBusy] = useState(false);
+    const [busySecondary, setBusySecondary] = useState(false);
+    const [error, setError] = useState("");
     const allSelected = selected.size === alunos.length;
 
     function toggle(id) {
@@ -24,6 +35,23 @@ export default function AlunoSelectorModal({ alunos, title = "Selecionar alunos"
             await onConfirm(chosen);
             onClose();
         } finally { setBusy(false); }
+    }
+
+    async function confirmSecondary() {
+        setError("");
+        const chosen = alunos.filter((a) => selected.has(a.id));
+        const comEmail = chosen.filter((a) => (a.email || "").trim());
+        if (!comEmail.length) {
+            setError("Nenhum dos alunos selecionados tem email registado. Adicione o email em Turma ou no perfil do aluno.");
+            return;
+        }
+        setBusySecondary(true);
+        try {
+            await onSecondaryConfirm(comEmail);
+            onClose();
+        } catch (e) {
+            setError(e?.response?.data?.detail || e?.message || "Erro ao enviar email.");
+        } finally { setBusySecondary(false); }
     }
 
     return (
@@ -73,6 +101,11 @@ export default function AlunoSelectorModal({ alunos, title = "Selecionar alunos"
                                             {on ? <CheckSquare size={16} className="text-brand-forest" /> : <Square size={16} className="text-brand-sage" />}
                                             <span className="text-xs font-mono text-brand-sage w-6 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
                                             <span className="text-sm text-brand-charcoal">{a.nome}</span>
+                                            {onSecondaryConfirm && (
+                                                <span className={`ml-auto text-[10px] ${a.email ? "text-brand-sage" : "text-brand-sage/50 italic"}`}>
+                                                    {a.email || "sem email"}
+                                                </span>
+                                            )}
                                         </button>
                                     </li>
                                 );
@@ -81,12 +114,26 @@ export default function AlunoSelectorModal({ alunos, title = "Selecionar alunos"
                     )}
                 </div>
 
-                <div className="p-4 border-t border-crisp flex items-center gap-3 justify-end bg-surface">
-                    <button onClick={onClose} className="btn-ghost">Cancelar</button>
-                    <button data-testid="aluno-selector-confirm" onClick={confirm} disabled={busy || selected.size === 0} className="btn-primary">
-                        <FileText size={15} />
-                        {busy ? "A gerar..." : `${confirmLabel} (${selected.size})`}
-                    </button>
+                <div className="p-4 border-t border-crisp bg-surface">
+                    {error && <div className="mb-3 text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
+                    <div className="flex items-center gap-3 justify-end flex-wrap">
+                        <button onClick={onClose} className="btn-ghost">Cancelar</button>
+                        {onSecondaryConfirm && (
+                            <button
+                                data-testid="aluno-selector-secondary"
+                                onClick={confirmSecondary}
+                                disabled={busy || busySecondary || selected.size === 0}
+                                className="btn-ghost"
+                            >
+                                <Mail size={15} />
+                                {busySecondary ? "A enviar..." : `${secondaryLabel || "Enviar por e-mail"} (${selected.size})`}
+                            </button>
+                        )}
+                        <button data-testid="aluno-selector-confirm" onClick={confirm} disabled={busy || busySecondary || selected.size === 0} className="btn-primary">
+                            <FileText size={15} />
+                            {busy ? "A gerar..." : `${confirmLabel} (${selected.size})`}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

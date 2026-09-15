@@ -10,7 +10,7 @@ export default function Admin() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [error, setError] = useState("");
-    const [form, setForm] = useState({ nome: "", email: "", password: "", agrupamento: "" });
+    const [form, setForm] = useState({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "" });
     const [creating, setCreating] = useState(false);
     const [justCreated, setJustCreated] = useState(null);
     const [resetTarget, setResetTarget] = useState(null);
@@ -32,9 +32,12 @@ export default function Admin() {
         setCreating(true);
         setError("");
         try {
-            await api.post("/admin/teachers", form);
+            await api.post("/admin/teachers", {
+                ...form,
+                max_turmas: form.max_turmas === "" ? null : parseInt(form.max_turmas, 10),
+            });
             setJustCreated({ email: form.email, password: form.password });
-            setForm({ nome: "", email: "", password: "", agrupamento: "" });
+            setForm({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "" });
             setShowModal(false);
             await load();
         } catch (e) {
@@ -122,15 +125,17 @@ export default function Admin() {
                             <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
                                 <th className="px-5 py-3 font-semibold">Nome</th>
                                 <th className="px-5 py-3 font-semibold">Email</th>
+                                <th className="px-5 py-3 font-semibold">Ano letivo</th>
+                                <th className="px-5 py-3 font-semibold">Máx. turmas</th>
                                 <th className="px-5 py-3 font-semibold">Criado a</th>
                                 <th className="px-5 py-3 font-semibold w-16"></th>
                             </tr>
                         </thead>
                         <tbody data-testid="teachers-list">
                             {loading ? (
-                                <tr><td colSpan={4} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
+                                <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
                             ) : teachers.length === 0 ? (
-                                <tr><td colSpan={4} className="px-5 py-16 text-center text-brand-sage">
+                                <tr><td colSpan={6} className="px-5 py-16 text-center text-brand-sage">
                                     <GraduationCap className="mx-auto mb-3 opacity-40" size={32} />
                                     Ainda não criou nenhuma conta de professor.
                                 </td></tr>
@@ -138,6 +143,8 @@ export default function Admin() {
                                 <tr key={t.id} className="border-b border-crisp last:border-0 row-hover">
                                     <td className="px-5 py-3 font-medium text-brand-charcoal">{t.nome}</td>
                                     <td className="px-5 py-3 font-mono text-xs text-brand-charcoal/80">{t.email}</td>
+                                    <td className="px-5 py-3 text-brand-charcoal/70 text-xs">{t.ano_letivo || "—"}</td>
+                                    <td className="px-5 py-3 text-brand-charcoal/70 text-xs tabular-nums">{t.max_turmas ?? "—"}</td>
                                     <td className="px-5 py-3 text-brand-charcoal/60 text-xs">
                                         {t.created_at ? new Date(t.created_at).toLocaleDateString("pt-PT") : "—"}
                                     </td>
@@ -191,6 +198,16 @@ export default function Admin() {
                             <div>
                                 <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Palavra-passe</label>
                                 <input required minLength={4} data-testid="teacher-password" className="input-forest" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Mínimo 4 caracteres" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Ano letivo</label>
+                                    <input required data-testid="teacher-ano-letivo" className="input-forest" value={form.ano_letivo} onChange={(e) => setForm((f) => ({ ...f, ano_letivo: e.target.value }))} placeholder="2025/2026" />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Máx. turmas</label>
+                                    <input required type="number" min={1} data-testid="teacher-max-turmas" className="input-forest" value={form.max_turmas} onChange={(e) => setForm((f) => ({ ...f, max_turmas: e.target.value }))} placeholder="Ex: 6" />
+                                </div>
                             </div>
                             <div className="flex gap-3 pt-3">
                                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center">Cancelar</button>

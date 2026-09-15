@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Badge from "@/components/Badge";
-import { calcClassif, domColor, NOTA_MAX } from "@/lib/grelha";
+import { calcClassif, calcDominioInstrumento, domColor, NOTA_MAX, isEscala20, formatAvaliacao } from "@/lib/grelha";
 import { Info, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
-export default function LancarNotas({ alunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
+export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
+    const escala20 = isEscala20(turma);
     const [instId, setInstId] = useState(focusedInstId || insts[0]?.id || null);
 
     useEffect(() => {
@@ -255,13 +256,18 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas, focuse
                                             </div>
                                         </th>
                                     ))}
+                                    {dominios.map((d, i) => (
+                                        <th key={d.code} className="px-3 py-2.5 text-center text-[10px] uppercase tracking-[0.15em] font-semibold" style={{ color: domColors[d.code] || domColor(i) }}>
+                                            {d.code}
+                                        </th>
+                                    ))}
                                     <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Avaliação Quantitativa</th>
-                                    <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Avaliação Qualitativa</th>
+                                    {!escala20 && <th className="px-4 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold">Avaliação Qualitativa</th>}
                                 </tr>
                             </thead>
                             <tbody>
                                 {alunos.length === 0 ? (
-                                    <tr><td colSpan={inst.questoes.length + 3} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
+                                    <tr><td colSpan={inst.questoes.length + dominios.length + (escala20 ? 1 : 2)} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
                                 ) : alunos.map((a, rowIdx) => {
                                     const classif = calcClassif(instWithNotas, a.id);
                                     return (
@@ -287,10 +293,18 @@ export default function LancarNotas({ alunos, insts, dominios, saveNotas, focuse
                                                     </td>
                                                 );
                                             })}
+                                            {dominios.map((d) => {
+                                                const domClassif = calcDominioInstrumento(instWithNotas, a.id, d.code);
+                                                return (
+                                                    <td key={d.code} className="px-3 py-2.5 text-center tabular-nums text-brand-charcoal/80 font-mono text-[13px]">
+                                                        {formatAvaliacao(domClassif, turma)}
+                                                    </td>
+                                                );
+                                            })}
                                             <td className="px-4 py-2.5 tabular-nums font-serif text-base text-brand-forest">
-                                                {classif != null ? classif.toFixed(1) + "%" : "—"}
+                                                {formatAvaliacao(classif, turma)}
                                             </td>
-                                            <td className="px-4 py-2.5"><Badge v={classif} mode="number" /></td>
+                                            {!escala20 && <td className="px-4 py-2.5"><Badge v={classif} /></td>}
                                         </tr>
                                     );
                                 })}
