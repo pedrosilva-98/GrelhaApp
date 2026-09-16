@@ -7,9 +7,15 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import uuid
 import logging
+import base64
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 import bcrypt
 import jwt
-import requests
+from cryptography.fernet import Fernet
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict
 
@@ -59,6 +65,30 @@ def verify_password(pw: str, hashed: str) -> bool:
     except Exception:
         return False
 
+SMTP_PROVIDERS = {
+    "gmail.com": ("smtp.gmail.com", 587),
+    "googlemail.com": ("smtp.gmail.com", 587),
+    "outlook.com": ("smtp.office365.com", 587),
+    "hotmail.com": ("smtp.office365.com", 587),
+    "live.com": ("smtp.office365.com", 587),
+    "yahoo.com": ("smtp.mail.yahoo.com", 587),
+}
+
+def smtp_settings_for(email: str):
+    domain = email.rsplit("@", 1)[-1].lower()
+    if domain in SMTP_PROVIDERS:
+        return SMTP_PROVIDERS[domain]
+    return os.environ.get("SMTP_HOST", "smtp.gmail.com"), int(os.environ.get("SMTP_PORT", "587"))
+
+def get_fernet() -> Fernet:
+    key = os.environ.get("FERNET_KEY", "")
+    if not key:
+        raise HTTPException(status_code=503, detail="Configuração de segurança em falta no servidor (FERNET_KEY).")
+    try:
+        return Fernet(key.encode())
+    except Exception:
+        raise HTTPException(status_code=500, detail="FERNET_KEY inválida no servidor.")
+
 def create_token(user_id: str, email: str, role: str) -> str:
     payload = {
         "sub": user_id, "email": email, "role": role,
@@ -82,7 +112,7 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Sessão expirada")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0, "smtp_app_password_enc": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilizador não encontrado")
     return user
@@ -219,6 +249,9 @@ class InstrumentoUpdate(BaseModel):
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
 
+class EmailConfigIn(BaseModel):
+    app_password: str
+
 class EmailRelatorioIn(BaseModel):
     destinatario: EmailStr
     aluno_nome: str
@@ -230,7 +263,7 @@ class EmailRelatorioIn(BaseModel):
 class ODAvaliacaoUpdate(BaseModel):
     dom: Optional[str] = None
     notas: Optional[Dict[str, Optional[float]]] = None  # aluno_id -> nota (0-10) or None to clear
-    semestre: Optional[int] = None  # 1 or 2 or null
+    semestre: Optional[int] = None  # 1 or 2 (required going forward — "ambos" já não é uma opção)
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -262,11 +295,31 @@ async def change_password(body: PasswordChange, user: dict = Depends(get_current
     await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
     return {"ok": True}
 
+@api.get("/auth/email-config")
+async def get_email_config(user: dict = Depends(require_teacher)):
+    full = await db.users.find_one({"id": user["id"]}, {"smtp_app_password_enc": 1})
+    return {"configured": bool(full and full.get("smtp_app_password_enc"))}
+
+@api.put("/auth/email-config")
+async def set_email_config(body: EmailConfigIn, user: dict = Depends(require_teacher)):
+    app_password = body.app_password.strip().replace(" ", "")
+    if not app_password:
+        raise HTTPException(status_code=400, detail="Indique a palavra-passe de aplicação.")
+    fernet = get_fernet()
+    enc = fernet.encrypt(app_password.encode()).decode()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"smtp_app_password_enc": enc}})
+    return {"configured": True}
+
+@api.delete("/auth/email-config")
+async def delete_email_config(user: dict = Depends(require_teacher)):
+    await db.users.update_one({"id": user["id"]}, {"$unset": {"smtp_app_password_enc": ""}})
+    return {"configured": False}
+
 # ─── Admin ────────────────────────────────────────────────────────────────────
 
 @api.get("/admin/teachers")
 async def list_teachers(_: dict = Depends(require_admin)):
-    return await db.users.find({"role": "teacher"}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return await db.users.find({"role": "teacher"}, {"_id": 0, "password_hash": 0, "smtp_app_password_enc": 0}).to_list(1000)
 
 @api.post("/admin/teachers")
 async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
@@ -491,9 +544,9 @@ async def update_od_avaliacao(turma_id: str, parametro_id: str, body: ODAvaliaca
             raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {body.dom}")
         current["dom"] = body.dom or None
     if body.semestre is not None:
-        if body.semestre not in (0, 1, 2):
-            raise HTTPException(status_code=400, detail="Semestre inválido (usar 1, 2 ou nulo)")
-        current["semestre"] = body.semestre or None
+        if body.semestre not in (1, 2):
+            raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
+        current["semestre"] = body.semestre
     if body.notas is not None:
         cleaned = dict(current.get("notas") or {})
         for aluno_id, nota in body.notas.items():
@@ -755,30 +808,52 @@ async def delete_instrumento(inst_id: str, user: dict = Depends(require_teacher)
 
 @api.post("/relatorios/enviar-email")
 async def enviar_relatorio_email(body: EmailRelatorioIn, user: dict = Depends(require_teacher)):
-    api_key = os.environ.get("RESEND_API_KEY", "")
-    mail_from = os.environ.get("MAIL_FROM", "")
-    if not api_key or not mail_from:
+    full = await db.users.find_one({"id": user["id"]}, {"smtp_app_password_enc": 1})
+    enc_password = full.get("smtp_app_password_enc") if full else None
+    if not enc_password:
         raise HTTPException(
             status_code=503,
-            detail="O envio de email não está configurado. Defina RESEND_API_KEY e MAIL_FROM no servidor.",
+            detail="Ainda não configuraste o envio de email. Vai a 'Configurar envio de email' no menu do utilizador.",
         )
+    fernet = get_fernet()
     try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "from": mail_from,
-                "to": [body.destinatario],
-                "subject": body.assunto,
-                "html": body.corpo or f"<p>Segue em anexo o relatório de {body.aluno_nome}.</p>",
-                "attachments": [{"filename": body.filename, "content": body.pdf_base64}],
-            },
-            timeout=20,
+        app_password = fernet.decrypt(enc_password.encode()).decode()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Não foi possível ler a configuração de email. Reconfigura o envio de email.")
+
+    smtp_user = user["email"]
+    smtp_host, smtp_port = smtp_settings_for(smtp_user)
+
+    try:
+        pdf_bytes = base64.b64decode(body.pdf_base64)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Anexo do relatório inválido.")
+
+    msg = MIMEMultipart()
+    msg["From"] = f"{user.get('nome', '')} <{smtp_user}>" if user.get("nome") else smtp_user
+    msg["To"] = body.destinatario
+    msg["Subject"] = body.assunto
+    msg.attach(MIMEText(body.corpo or f"<p>Segue em anexo o relatório de {body.aluno_nome}.</p>", "html"))
+    part = MIMEBase("application", "pdf")
+    part.set_payload(pdf_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{body.filename}"')
+    msg.attach(part)
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.starttls()
+            server.login(smtp_user, app_password)
+            server.sendmail(smtp_user, [body.destinatario], msg.as_string())
+    except smtplib.SMTPAuthenticationError:
+        raise HTTPException(
+            status_code=502,
+            detail="O servidor de email rejeitou as credenciais. Confirma a palavra-passe de aplicação em 'Configurar envio de email'.",
         )
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Falha de ligação ao serviço de email: {e}")
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {resp.text[:300]}")
+    except smtplib.SMTPException as e:
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {e}")
+    except OSError as e:
+        raise HTTPException(status_code=502, detail=f"Falha de ligação ao servidor SMTP: {e}")
     return {"ok": True}
 
 # ─── Health ───────────────────────────────────────────────────────────────────

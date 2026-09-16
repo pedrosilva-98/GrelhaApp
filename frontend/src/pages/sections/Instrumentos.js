@@ -355,7 +355,7 @@ export default function Instrumentos({
 // ─── Modal to grade one OD parameter across all alunos ───────────────────────
 function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave }) {
     const [dom, setDom] = useState(entry.dom || dominios[0]?.code || "");
-    const [semestre, setSemestre] = useState(entry.semestre != null ? String(entry.semestre) : "");
+    const [semestre, setSemestre] = useState(entry.semestre != null ? String(entry.semestre) : "1");
     const initialNotas = useMemo(() => {
         const n = {};
         for (const a of alunos) n[a.id] = entry.notas?.[a.id] != null ? String(entry.notas[a.id]) : "";
@@ -386,7 +386,7 @@ function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave })
             for (const [id, v] of Object.entries(notas)) {
                 cleaned[id] = v === "" || v == null ? null : Number(v);
             }
-            await onSave({ dom, semestre: semestre ? parseInt(semestre) : 0, notas: cleaned });
+            await onSave({ dom, semestre: parseInt(semestre), notas: cleaned });
             setSaved(true);
             setTimeout(onClose, 900);
         } catch (e) {
@@ -417,9 +417,8 @@ function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave })
                             </select>
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Semestre (opcional)</label>
+                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Semestre</label>
                             <select data-testid="od-modal-sem" className="input-forest" value={semestre} onChange={(e) => setSemestre(e.target.value)}>
-                                <option value="">Ambos</option>
                                 <option value="1">1º Semestre</option>
                                 <option value="2">2º Semestre</option>
                             </select>
