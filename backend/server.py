@@ -8,7 +8,9 @@ import os
 import uuid
 import logging
 import base64
+import socket
 import smtplib
+from contextlib import contextmanager
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -79,6 +81,21 @@ def smtp_settings_for(email: str):
     if domain in SMTP_PROVIDERS:
         return SMTP_PROVIDERS[domain]
     return os.environ.get("SMTP_HOST", "smtp.gmail.com"), int(os.environ.get("SMTP_PORT", "587"))
+
+@contextmanager
+def force_ipv4_dns():
+    """Alguns hosts (ex: Render) não têm rota de saída IPv6, e a resolução DNS
+    de servidores SMTP (ex: smtp.gmail.com) por vezes devolve um endereço IPv6
+    primeiro, causando 'OSError: [Errno 101] Network is unreachable'. Força
+    apenas endereços IPv4 durante o bloco envolvido."""
+    original = socket.getaddrinfo
+    def ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+        return original(host, port, socket.AF_INET, type, proto, flags)
+    socket.getaddrinfo = ipv4_only
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
 
 def get_fernet() -> Fernet:
     key = os.environ.get("FERNET_KEY", "")
@@ -841,7 +858,7 @@ async def enviar_relatorio_email(body: EmailRelatorioIn, user: dict = Depends(re
     msg.attach(part)
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+        with force_ipv4_dns(), smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
             server.starttls()
             server.login(smtp_user, app_password)
             server.sendmail(smtp_user, [body.destinatario], msg.as_string())
