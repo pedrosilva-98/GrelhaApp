@@ -7,21 +7,15 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import uuid
 import logging
-import base64
-import socket
-import smtplib
-from contextlib import contextmanager
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+import html
 import bcrypt
 import jwt
-from cryptography.fernet import Fernet
+import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
@@ -67,45 +61,6 @@ def verify_password(pw: str, hashed: str) -> bool:
     except Exception:
         return False
 
-SMTP_PROVIDERS = {
-    "gmail.com": ("smtp.gmail.com", 587),
-    "googlemail.com": ("smtp.gmail.com", 587),
-    "outlook.com": ("smtp.office365.com", 587),
-    "hotmail.com": ("smtp.office365.com", 587),
-    "live.com": ("smtp.office365.com", 587),
-    "yahoo.com": ("smtp.mail.yahoo.com", 587),
-}
-
-def smtp_settings_for(email: str):
-    domain = email.rsplit("@", 1)[-1].lower()
-    if domain in SMTP_PROVIDERS:
-        return SMTP_PROVIDERS[domain]
-    return os.environ.get("SMTP_HOST", "smtp.gmail.com"), int(os.environ.get("SMTP_PORT", "587"))
-
-@contextmanager
-def force_ipv4_dns():
-    """Alguns hosts (ex: Render) não têm rota de saída IPv6, e a resolução DNS
-    de servidores SMTP (ex: smtp.gmail.com) por vezes devolve um endereço IPv6
-    primeiro, causando 'OSError: [Errno 101] Network is unreachable'. Força
-    apenas endereços IPv4 durante o bloco envolvido."""
-    original = socket.getaddrinfo
-    def ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
-        return original(host, port, socket.AF_INET, type, proto, flags)
-    socket.getaddrinfo = ipv4_only
-    try:
-        yield
-    finally:
-        socket.getaddrinfo = original
-
-def get_fernet() -> Fernet:
-    key = os.environ.get("FERNET_KEY", "")
-    if not key:
-        raise HTTPException(status_code=503, detail="Configuração de segurança em falta no servidor (FERNET_KEY).")
-    try:
-        return Fernet(key.encode())
-    except Exception:
-        raise HTTPException(status_code=500, detail="FERNET_KEY inválida no servidor.")
-
 def create_token(user_id: str, email: str, role: str) -> str:
     payload = {
         "sub": user_id, "email": email, "role": role,
@@ -129,7 +84,7 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Sessão expirada")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0, "smtp_app_password_enc": 0})
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilizador não encontrado")
     return user
@@ -144,12 +99,27 @@ async def require_teacher(user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403, detail="Apenas professor")
     return user
 
+def normalize_od(od_all: Optional[dict]) -> dict:
+    """Formato atual: {parametro_id: {"1": {dom, notas}, "2": {dom, notas}}}.
+    Converte o formato antigo ({parametro_id: {dom, semestre, notas}}); uma entrada
+    antiga sem semestre ("ambos") passa a existir nos dois semestres."""
+    out = {}
+    for pid, entry in (od_all or {}).items():
+        entry = entry or {}
+        if any(k in entry for k in ("notas", "dom", "semestre")):
+            sems = [str(entry["semestre"])] if entry.get("semestre") in (1, 2) else ["1", "2"]
+            out[pid] = {s: {"dom": entry.get("dom"), "notas": dict(entry.get("notas") or {})} for s in sems}
+        else:
+            out[pid] = entry
+    return out
+
 async def get_turma_or_404(turma_id: str, user: dict) -> dict:
     t = await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Turma não encontrada")
     if "dominios" not in t or not t["dominios"]:
         t["dominios"] = [dict(d) for d in DEFAULT_DOMINIOS]
+    t["od_avaliacoes"] = normalize_od(t.get("od_avaliacoes"))
     return t
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -266,9 +236,6 @@ class InstrumentoUpdate(BaseModel):
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
 
-class EmailConfigIn(BaseModel):
-    app_password: str
-
 class EmailRelatorioIn(BaseModel):
     destinatario: EmailStr
     aluno_nome: str
@@ -280,7 +247,7 @@ class EmailRelatorioIn(BaseModel):
 class ODAvaliacaoUpdate(BaseModel):
     dom: Optional[str] = None
     notas: Optional[Dict[str, Optional[float]]] = None  # aluno_id -> nota (0-10) or None to clear
-    semestre: Optional[int] = None  # 1 or 2 (required going forward — "ambos" já não é uma opção)
+    semestre: int  # 1 ou 2 — cada semestre é classificado individualmente
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -312,31 +279,11 @@ async def change_password(body: PasswordChange, user: dict = Depends(get_current
     await db.users.update_one({"id": user["id"]}, {"$set": {"password_hash": hash_password(body.new_password)}})
     return {"ok": True}
 
-@api.get("/auth/email-config")
-async def get_email_config(user: dict = Depends(require_teacher)):
-    full = await db.users.find_one({"id": user["id"]}, {"smtp_app_password_enc": 1})
-    return {"configured": bool(full and full.get("smtp_app_password_enc"))}
-
-@api.put("/auth/email-config")
-async def set_email_config(body: EmailConfigIn, user: dict = Depends(require_teacher)):
-    app_password = body.app_password.strip().replace(" ", "")
-    if not app_password:
-        raise HTTPException(status_code=400, detail="Indique a palavra-passe de aplicação.")
-    fernet = get_fernet()
-    enc = fernet.encrypt(app_password.encode()).decode()
-    await db.users.update_one({"id": user["id"]}, {"$set": {"smtp_app_password_enc": enc}})
-    return {"configured": True}
-
-@api.delete("/auth/email-config")
-async def delete_email_config(user: dict = Depends(require_teacher)):
-    await db.users.update_one({"id": user["id"]}, {"$unset": {"smtp_app_password_enc": ""}})
-    return {"configured": False}
-
 # ─── Admin ────────────────────────────────────────────────────────────────────
 
 @api.get("/admin/teachers")
 async def list_teachers(_: dict = Depends(require_admin)):
-    return await db.users.find({"role": "teacher"}, {"_id": 0, "password_hash": 0, "smtp_app_password_enc": 0}).to_list(1000)
+    return await db.users.find({"role": "teacher"}, {"_id": 0, "password_hash": 0}).to_list(1000)
 
 @api.post("/admin/teachers")
 async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
@@ -390,6 +337,7 @@ async def list_turmas(user: dict = Depends(require_teacher)):
     for d in docs:
         if "dominios" not in d or not d["dominios"]:
             d["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
+        d["od_avaliacoes"] = normalize_od(d.get("od_avaliacoes"))
     return docs
 
 async def _check_max_turmas(user: dict):
@@ -441,7 +389,7 @@ async def update_turma(turma_id: str, body: TurmaUpdate, user: dict = Depends(re
     updates = {k: v for k, v in body.model_dump(exclude_none=True).items()}
     if updates:
         await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": updates})
-    return await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
+    return await get_turma_or_404(turma_id, user)
 
 @api.put("/turmas/{turma_id}/dominios")
 async def update_dominios(turma_id: str, body: DominiosUpdate, user: dict = Depends(require_teacher)):
@@ -544,7 +492,7 @@ async def update_turma_config(turma_id: str, body: TurmaConfigUpdate, user: dict
         updates["meta_sucesso"] = float(body.meta_sucesso)
     if updates:
         await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": updates})
-    return await db.turmas.find_one({"id": turma_id, "prof_id": user["id"]}, {"_id": 0})
+    return await get_turma_or_404(turma_id, user)
 
 
 @api.put("/turmas/{turma_id}/od/{parametro_id}")
@@ -553,17 +501,17 @@ async def update_od_avaliacao(turma_id: str, parametro_id: str, body: ODAvaliaca
     valid_ids = {p["id"] for p in (turma.get("parametros_od") or [])}
     if parametro_id not in valid_ids:
         raise HTTPException(status_code=400, detail="Parâmetro de observação desconhecido")
+    if body.semestre not in (1, 2):
+        raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
     valid_doms = {d["code"] for d in turma.get("dominios", DEFAULT_DOMINIOS)}
     od_all = dict(turma.get("od_avaliacoes") or {})
-    current = dict(od_all.get(parametro_id) or {})
+    por_semestre = dict(od_all.get(parametro_id) or {})
+    sem_key = str(body.semestre)
+    current = dict(por_semestre.get(sem_key) or {})
     if body.dom is not None:
         if body.dom and body.dom not in valid_doms:
             raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {body.dom}")
         current["dom"] = body.dom or None
-    if body.semestre is not None:
-        if body.semestre not in (1, 2):
-            raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
-        current["semestre"] = body.semestre
     if body.notas is not None:
         cleaned = dict(current.get("notas") or {})
         for aluno_id, nota in body.notas.items():
@@ -578,9 +526,12 @@ async def update_od_avaliacao(turma_id: str, parametro_id: str, body: ODAvaliaca
                 raise HTTPException(status_code=400, detail=f"Nota fora de 0-10 para aluno {aluno_id}")
             cleaned[aluno_id] = n
         current["notas"] = cleaned
-    od_all[parametro_id] = current
+    current.setdefault("dom", None)
+    current.setdefault("notas", {})
+    por_semestre[sem_key] = current
+    od_all[parametro_id] = por_semestre
     await db.turmas.update_one({"id": turma_id, "prof_id": user["id"]}, {"$set": {"od_avaliacoes": od_all}})
-    return {"parametro_id": parametro_id, **current}
+    return {"parametro_id": parametro_id, "semestre": body.semestre, **current}
 
 
 
@@ -825,52 +776,43 @@ async def delete_instrumento(inst_id: str, user: dict = Depends(require_teacher)
 
 @api.post("/relatorios/enviar-email")
 async def enviar_relatorio_email(body: EmailRelatorioIn, user: dict = Depends(require_teacher)):
-    full = await db.users.find_one({"id": user["id"]}, {"smtp_app_password_enc": 1})
-    enc_password = full.get("smtp_app_password_enc") if full else None
-    if not enc_password:
+    script_url = os.environ.get("APPS_SCRIPT_URL", "")
+    script_secret = os.environ.get("APPS_SCRIPT_SECRET", "")
+    if not script_url or not script_secret:
         raise HTTPException(
             status_code=503,
-            detail="Ainda não configuraste o envio de email. Vai a 'Configurar envio de email' no menu do utilizador.",
+            detail="O envio de email não está configurado no servidor (APPS_SCRIPT_URL / APPS_SCRIPT_SECRET).",
         )
-    fernet = get_fernet()
-    try:
-        app_password = fernet.decrypt(enc_password.encode()).decode()
-    except Exception:
-        raise HTTPException(status_code=500, detail="Não foi possível ler a configuração de email. Reconfigura o envio de email.")
 
-    smtp_user = user["email"]
-    smtp_host, smtp_port = smtp_settings_for(smtp_user)
+    corpo = body.corpo or f"<p>Segue em anexo o relatório de {html.escape(body.aluno_nome)}.</p>"
+    prof = html.escape(user.get("nome") or "")
+    rodape = (
+        '<hr style="border:none;border-top:1px solid #ddd;margin-top:24px">'
+        f'<p style="color:#888;font-size:12px">Enviado por {prof}. '
+        "Esta é uma mensagem automática, por favor não responda.</p>"
+    )
+    payload = {
+        "secret": script_secret,
+        "to": body.destinatario,
+        "subject": body.assunto,
+        "html": corpo + rodape,
+        "pdf_base64": body.pdf_base64,
+        "filename": body.filename,
+    }
 
-    try:
-        pdf_bytes = base64.b64decode(body.pdf_base64)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Anexo do relatório inválido.")
-
-    msg = MIMEMultipart()
-    msg["From"] = f"{user.get('nome', '')} <{smtp_user}>" if user.get("nome") else smtp_user
-    msg["To"] = body.destinatario
-    msg["Subject"] = body.assunto
-    msg.attach(MIMEText(body.corpo or f"<p>Segue em anexo o relatório de {body.aluno_nome}.</p>", "html"))
-    part = MIMEBase("application", "pdf")
-    part.set_payload(pdf_bytes)
-    encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f'attachment; filename="{body.filename}"')
-    msg.attach(part)
+    def _send():
+        return requests.post(script_url, json=payload, timeout=30)
 
     try:
-        with force_ipv4_dns(), smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-            server.starttls()
-            server.login(smtp_user, app_password)
-            server.sendmail(smtp_user, [body.destinatario], msg.as_string())
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(
-            status_code=502,
-            detail="O servidor de email rejeitou as credenciais. Confirma a palavra-passe de aplicação em 'Configurar envio de email'.",
-        )
-    except smtplib.SMTPException as e:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {e}")
-    except OSError as e:
-        raise HTTPException(status_code=502, detail=f"Falha de ligação ao servidor SMTP: {e}")
+        resp = await run_in_threadpool(_send)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Falha de ligação ao serviço de email: {e}")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Resposta inválida do serviço de email. Confirma o URL do script e se está publicado para 'Qualquer pessoa'.")
+    if not data.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {data.get('error', 'erro desconhecido')}")
     return {"ok": True}
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -891,6 +833,7 @@ async def startup():
     await db.turmas.create_index("id", unique=True)
     await db.alunos.create_index("turma_id")
     await db.instrumentos.create_index("turma_id")
+    await db.users.update_many({"smtp_app_password_enc": {"$exists": True}}, {"$unset": {"smtp_app_password_enc": ""}})
 
     admin_email = os.environ.get("ADMIN_EMAIL", "").lower().strip()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")

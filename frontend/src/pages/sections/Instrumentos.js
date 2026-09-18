@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save } from "lucide-react";
-import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor } from "@/lib/grelha";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -40,7 +40,7 @@ export default function Instrumentos({
     const [form, setForm] = useState(buildInitial(dominios));
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
-    const [odClassifying, setOdClassifying] = useState(null); // parametro object
+    const [odClassifying, setOdClassifying] = useState(null); // { parametro, sem }
 
     function openNew() { setForm(buildInitial(dominios)); setEditing("new"); setError(""); }
     function openEdit(inst) { setForm(fromInst(inst)); setEditing(inst.id); setError(""); }
@@ -288,12 +288,12 @@ export default function Instrumentos({
                 </table>
             </div>
 
-            {/* Observação Direta panel — separate section listing each parameter */}
-            {parametrosOD.length > 0 && (
-                <div data-testid="od-panel">
+            {/* Observação Direta — uma secção por semestre, classificados individualmente */}
+            {parametrosOD.length > 0 && [1, 2].map((sem) => (
+                <div key={sem} data-testid={`od-panel-${sem}`}>
                     <div className="flex items-baseline justify-between mb-3">
                         <div>
-                            <h2 className="font-serif text-xl text-brand-forest">Observação Direta</h2>
+                            <h2 className="font-serif text-xl text-brand-forest">Observação Direta · {sem}º Semestre</h2>
                         </div>
                         <div className="text-xs text-brand-charcoal/60">{parametrosOD.length} parâmetro(s) · {alunos.length} aluno(s)</div>
                     </div>
@@ -307,14 +307,14 @@ export default function Instrumentos({
                                     <th className="px-5 py-2.5 font-semibold w-36 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody data-testid="od-list">
+                            <tbody data-testid={`od-list-${sem}`}>
                                 {parametrosOD.map((p, i) => {
-                                    const entry = (turma?.od_avaliacoes || {})[p.id] || {};
+                                    const entry = odEntry(turma, p.id, sem);
                                     const notasCount = Object.keys(entry.notas || {}).length;
                                     const dom = entry.dom || null;
                                     const domIdx = dominios.findIndex((d) => d.code === dom);
                                     return (
-                                        <tr key={p.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`} data-testid={`od-row-${p.id}`}>
+                                        <tr key={p.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`} data-testid={`od-row-${p.id}-${sem}`}>
                                             <td className="px-5 py-3 font-medium text-brand-charcoal">{p.nome}</td>
                                             <td className="px-5 py-3">
                                                 {dom ? (
@@ -323,7 +323,7 @@ export default function Instrumentos({
                                             </td>
                                             <td className="px-5 py-3 text-right tabular-nums font-mono text-xs text-brand-charcoal/70">{notasCount} / {alunos.length}</td>
                                             <td className="px-5 py-3 text-right">
-                                                <button data-testid={`od-classif-${p.id}`} onClick={() => setOdClassifying(p)} className="btn-primary !px-3 !py-1.5 text-xs">
+                                                <button data-testid={`od-classif-${p.id}-${sem}`} onClick={() => setOdClassifying({ parametro: p, sem })} className="btn-primary !px-3 !py-1.5 text-xs">
                                                     <ClipboardCheck size={13} /> Classificar
                                                 </button>
                                             </td>
@@ -334,17 +334,20 @@ export default function Instrumentos({
                         </table>
                     </div>
                 </div>
-            )}
+            ))}
 
             {odClassifying && (
                 <ODClassifModal
-                    parametro={odClassifying}
-                    entry={(turma?.od_avaliacoes || {})[odClassifying.id] || {}}
+                    key={`${odClassifying.parametro.id}-${odClassifying.sem}`}
+                    parametro={odClassifying.parametro}
+                    semestre={odClassifying.sem}
+                    entry={odEntry(turma, odClassifying.parametro.id, odClassifying.sem)}
+                    fallbackDom={odEntry(turma, odClassifying.parametro.id, odClassifying.sem === 1 ? 2 : 1).dom}
                     dominios={dominios}
                     alunos={alunos}
                     onClose={() => setOdClassifying(null)}
                     onSave={async (payload) => {
-                        await saveODAvaliacao(odClassifying.id, payload);
+                        await saveODAvaliacao(odClassifying.parametro.id, { ...payload, semestre: odClassifying.sem });
                     }}
                 />
             )}
@@ -353,9 +356,8 @@ export default function Instrumentos({
 }
 
 // ─── Modal to grade one OD parameter across all alunos ───────────────────────
-function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave }) {
-    const [dom, setDom] = useState(entry.dom || dominios[0]?.code || "");
-    const [semestre, setSemestre] = useState(entry.semestre != null ? String(entry.semestre) : "1");
+function ODClassifModal({ parametro, semestre, entry, fallbackDom, dominios, alunos, onClose, onSave }) {
+    const [dom, setDom] = useState(entry.dom || fallbackDom || dominios[0]?.code || "");
     const initialNotas = useMemo(() => {
         const n = {};
         for (const a of alunos) n[a.id] = entry.notas?.[a.id] != null ? String(entry.notas[a.id]) : "";
@@ -386,7 +388,7 @@ function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave })
             for (const [id, v] of Object.entries(notas)) {
                 cleaned[id] = v === "" || v == null ? null : Number(v);
             }
-            await onSave({ dom, semestre: parseInt(semestre), notas: cleaned });
+            await onSave({ dom, notas: cleaned });
             setSaved(true);
             setTimeout(onClose, 900);
         } catch (e) {
@@ -403,26 +405,17 @@ function ODClassifModal({ parametro, entry, dominios, alunos, onClose, onSave })
                             <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
                                 <Sparkles size={12} /> Observação Direta
                             </div>
-                            <h2 className="font-serif text-xl text-brand-forest">{parametro.nome}</h2>
+                            <h2 className="font-serif text-xl text-brand-forest">{parametro.nome} · {semestre}º Semestre</h2>
                         </div>
                         <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
                             <X size={20} />
                         </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 mt-4">
-                        <div>
-                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Domínio</label>
-                            <select data-testid="od-modal-dom" className="input-forest" value={dom} onChange={(e) => setDom(e.target.value)}>
-                                {dominios.map((d) => <option key={d.code} value={d.code}>{`${d.code} — ${d.nome}`}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Semestre</label>
-                            <select data-testid="od-modal-sem" className="input-forest" value={semestre} onChange={(e) => setSemestre(e.target.value)}>
-                                <option value="1">1º Semestre</option>
-                                <option value="2">2º Semestre</option>
-                            </select>
-                        </div>
+                    <div className="mt-4">
+                        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Domínio</label>
+                        <select data-testid="od-modal-dom" className="input-forest" value={dom} onChange={(e) => setDom(e.target.value)}>
+                            {dominios.map((d) => <option key={d.code} value={d.code}>{`${d.code} — ${d.nome}`}</option>)}
+                        </select>
                     </div>
                 </div>
 

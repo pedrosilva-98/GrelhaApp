@@ -9,10 +9,9 @@ import Config from "@/pages/sections/Config";
 import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
-import EmailConfigModal from "@/components/EmailConfigModal";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
 import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound, Mail, NotebookPen } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -32,9 +31,7 @@ export default function Teacher() {
     const [showTurmaModal, setShowTurmaModal] = useState(false);
     const [editTurmaModal, setEditTurmaModal] = useState(false);
     const [showTurmaPicker, setShowTurmaPicker] = useState(false);
-    const [showChangePw, setShowChangePw] = useState(false);
-    const [showEmailConfig, setShowEmailConfig] = useState(false);
-    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [showChangePw, setShowChangePw] = useState(false);    const [userMenuOpen, setUserMenuOpen] = useState(false);
 
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
@@ -156,7 +153,7 @@ export default function Teacher() {
         setTurmas((s) => s.map((t) => {
             if (t.id !== turmaId) return t;
             const od = { ...(t.od_avaliacoes || {}) };
-            od[parametroId] = { dom: data.dom, semestre: data.semestre, notas: data.notas || {} };
+            od[parametroId] = { ...(od[parametroId] || {}), [String(data.semestre)]: { dom: data.dom, notas: data.notas || {} } };
             return { ...t, od_avaliacoes: od };
         }));
         return data;
@@ -337,13 +334,6 @@ export default function Teacher() {
                                                 <KeyRound size={14} /> Alterar palavra-passe
                                             </button>
                                             <button
-                                                data-testid="menu-email-config"
-                                                onClick={() => { setUserMenuOpen(false); setShowEmailConfig(true); }}
-                                                className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
-                                            >
-                                                <Mail size={14} /> Configurar envio de email
-                                            </button>
-                                            <button
                                                 onClick={() => { setUserMenuOpen(false); logout(); }}
                                                 className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
                                             >
@@ -457,10 +447,6 @@ export default function Teacher() {
 
             {showChangePw && (
                 <ChangePasswordModal onClose={() => setShowChangePw(false)} />
-            )}
-
-            {showEmailConfig && (
-                <EmailConfigModal onClose={() => setShowEmailConfig(false)} />
             )}
 
             {relatorioInst && (

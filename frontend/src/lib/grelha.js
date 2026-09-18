@@ -59,19 +59,28 @@ export function filterBySemestre(insts, sem, turma) {
     });
 }
 
+// Observação Direta é guardada por parâmetro e por semestre:
+// turma.od_avaliacoes[parametro_id]["1" | "2"] = { dom, notas: { aluno_id: 0-10 } }
+export function odEntry(turma, parametroId, sem) {
+    return turma?.od_avaliacoes?.[parametroId]?.[String(sem)] || {};
+}
+
 // Extract OD entries relevant to a domain for an aluno (with optional semestre filter).
 // Returns array of {parametro_id, dom, semestre, nota (0-10)}.
 export function odEntriesForAlunoInDom(turma, alunoId, domCode, sem) {
     const oda = turma?.od_avaliacoes || {};
     const out = [];
-    for (const [pid, entry] of Object.entries(oda)) {
-        if (!entry || entry.dom !== domCode) continue;
-        if (sem && entry.semestre && entry.semestre !== sem) continue;
-        const nota = entry.notas?.[alunoId];
-        if (nota == null || nota === "") continue;
-        const n = Number(nota);
-        if (Number.isNaN(n)) continue;
-        out.push({ parametro_id: pid, dom: entry.dom, semestre: entry.semestre || null, nota: n });
+    for (const [pid, porSem] of Object.entries(oda)) {
+        for (const s of [1, 2]) {
+            const entry = porSem?.[String(s)];
+            if (!entry || entry.dom !== domCode) continue;
+            if (sem && s !== sem) continue;
+            const nota = entry.notas?.[alunoId];
+            if (nota == null || nota === "") continue;
+            const n = Number(nota);
+            if (Number.isNaN(n)) continue;
+            out.push({ parametro_id: pid, dom: entry.dom, semestre: s, nota: n });
+        }
     }
     return out;
 }
@@ -81,25 +90,7 @@ export function getNivel(v) {
     return NIVEIS.find((x) => v >= x.min) || NIVEIS[NIVEIS.length - 1];
 }
 
-// Classification of an instrument for a student:
-// Each questão has cotacao (weight). Nota is 0-10 for each questão.
-// classif % = (sum(nota_i/10 * cot_i) / sum(cot_i)) * 100
-export function calcClassif(instrumento, alunoId) {
-    const notas = instrumento.notas?.[alunoId];
-    if (!notas) return null;
-    const totCot = instrumento.questoes.reduce((s, q) => s + Number(q.cotacao || 0), 0);
-    if (!totCot) return null;
-    // If no nota entered at all, return null
-    const anyNota = instrumento.questoes.some((q) => notas[q.id] != null && notas[q.id] !== "");
-    if (!anyNota) return null;
-    const weighted = instrumento.questoes.reduce((s, q) => {
-        const nota = Number(notas[q.id] || 0);
-        return s + (nota / NOTA_MAX) * Number(q.cotacao || 0);
-    }, 0);
-    return (weighted / totCot) * 100;
-}
-
-// Same idea restricted to a domain code
+// Classificação (%) de um instrumento num domínio: cada nota (0-10) pondera-se pela cotação da questão.
 // Includes both questões (per-student notas) and observacao_direta items on the instrument
 // (whose nota is a single value applied to any student who has any nota registered).
 export function calcDominioInstrumento(instrumento, alunoId, domCode) {
@@ -144,9 +135,9 @@ export function calcMediasDominioAluno(insts, alunoId, dominios, turma, sem) {
     return out;
 }
 
-// Weighted final for an aluno using dominios (each dominio has peso)
-export function calcMediaFinal(insts, dominios, alunoId, turma, sem) {
-    const doms = calcMediasDominioAluno(insts, alunoId, dominios, turma, sem);
+// Combina médias por domínio na média final ponderada pelo peso de cada domínio
+// (só entram os domínios que têm valor).
+export function ponderarDominios(doms, dominios) {
     let total = 0, totalPond = 0;
     for (const d of dominios) {
         if (doms[d.code] != null && d.peso > 0) {
@@ -155,6 +146,19 @@ export function calcMediaFinal(insts, dominios, alunoId, turma, sem) {
         }
     }
     return totalPond > 0 ? total / totalPond : null;
+}
+
+// Weighted final for an aluno using dominios (each dominio has peso)
+export function calcMediaFinal(insts, dominios, alunoId, turma, sem) {
+    return ponderarDominios(calcMediasDominioAluno(insts, alunoId, dominios, turma, sem), dominios);
+}
+
+// Avaliação quantitativa de UM instrumento: cada domínio pondera as questões pela cotação,
+// e o global pondera os domínios pelo seu peso (tal como na avaliação final).
+export function calcClassifInstrumento(instrumento, alunoId, dominios) {
+    const doms = {};
+    for (const d of dominios) doms[d.code] = calcDominioInstrumento(instrumento, alunoId, d.code);
+    return ponderarDominios(doms, dominios);
 }
 
 // ─── Escala 0-20 (10º/11º/12º ano) ────────────────────────────────────────────

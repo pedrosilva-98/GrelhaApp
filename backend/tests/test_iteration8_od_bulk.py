@@ -2,7 +2,7 @@
 Iteration 8 backend tests:
 - POST /api/alunos/bulk with new `alunos:[{nome,data_nascimento,n_processo}]` shape
   + backwards-compat with `nomes:[...]` + empty-name skipping.
-- PUT /api/turmas/{tid}/od/{param_id} (ODAvaliacaoUpdate): dom / notas / semestre,
+- PUT /api/turmas/{tid}/od/{param_id} (ODAvaliacaoUpdate): dom / notas por semestre (semestre obrigatório: 1 ou 2),
   validations (unknown param → 400, unknown dom → 400, nota OOR → 400, invalid semestre → 400),
   null nota clears entry, persists to turma.od_avaliacoes.
 """
@@ -126,18 +126,37 @@ class TestODAvaliacao:
         # GET turma verifies persistence
         turmas = requests.get(f"{BASE_URL}/api/turmas", headers=th).json()
         t = next(x for x in turmas if x["id"] == turma["id"])
-        assert t["od_avaliacoes"]["P1"]["dom"] == "CP"
-        assert t["od_avaliacoes"]["P1"]["semestre"] == 1
-        assert t["od_avaliacoes"]["P1"]["notas"][a1] == 8.5
+        assert t["od_avaliacoes"]["P1"]["1"]["dom"] == "CP"
+        assert t["od_avaliacoes"]["P1"]["1"]["notas"][a1] == 8.5
+        assert "2" not in t["od_avaliacoes"]["P1"]
+
+    def test_semestres_are_independent(self, turma, th):
+        a1, a2 = self._prep(turma, th)
+        requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
+                     json={"dom": "CP", "semestre": 1, "notas": {a1: 8, a2: 7}})
+        r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
+                         json={"dom": "CP", "semestre": 2, "notas": {a1: 5}})
+        assert r.status_code == 200, r.text
+        assert r.json()["semestre"] == 2
+        turmas = requests.get(f"{BASE_URL}/api/turmas", headers=th).json()
+        t = next(x for x in turmas if x["id"] == turma["id"])
+        assert t["od_avaliacoes"]["P1"]["1"]["notas"] == {a1: 8, a2: 7}
+        assert t["od_avaliacoes"]["P1"]["2"]["notas"] == {a1: 5}
+
+    def test_semestre_is_required(self, turma, th):
+        self._prep(turma, th)
+        r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
+                         json={"dom": "CP"})
+        assert r.status_code == 422
 
     def test_null_nota_clears(self, turma, th):
         alunos = self._prep(turma, th)
         a1, a2 = alunos
         requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
-                     json={"dom": "CP", "notas": {a1: 8, a2: 6}})
+                     json={"dom": "CP", "semestre": 1, "notas": {a1: 8, a2: 6}})
         # Clear a1 via null
         r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
-                         json={"notas": {a1: None}})
+                         json={"semestre": 1, "notas": {a1: None}})
         assert r.status_code == 200, r.text
         notas = r.json()["notas"]
         assert a1 not in notas
@@ -146,21 +165,21 @@ class TestODAvaliacao:
     def test_unknown_parametro_returns_400(self, turma, th):
         self._prep(turma, th)
         r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/PZ",
-                         headers=th, json={"dom": "CP"})
+                         headers=th, json={"dom": "CP", "semestre": 1})
         assert r.status_code == 400
         assert "parâmetro" in r.json()["detail"].lower() or "parametro" in r.json()["detail"].lower()
 
     def test_unknown_dom_returns_400(self, turma, th):
         self._prep(turma, th)
         r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1",
-                         headers=th, json={"dom": "ZZZ"})
+                         headers=th, json={"dom": "ZZZ", "semestre": 1})
         assert r.status_code == 400
         assert "domínio" in r.json()["detail"].lower() or "dominio" in r.json()["detail"].lower()
 
     def test_nota_out_of_range_returns_400(self, turma, th):
         alunos = self._prep(turma, th)
         r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
-                         json={"dom": "CP", "notas": {alunos[0]: 11}})
+                         json={"dom": "CP", "semestre": 1, "notas": {alunos[0]: 11}})
         assert r.status_code == 400
 
     def test_invalid_semestre_returns_400(self, turma, th):
@@ -169,12 +188,9 @@ class TestODAvaliacao:
                          json={"semestre": 5})
         assert r.status_code == 400
 
-    def test_semestre_null_via_zero(self, turma, th):
-        """The backend uses 0 → None (nullable pattern) since None won't hit the branch."""
+    def test_semestre_zero_is_rejected(self, turma, th):
+        """\"Ambos\" (0/null) já não é uma opção: cada semestre é classificado individualmente."""
         self._prep(turma, th)
-        requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
-                     json={"semestre": 1})
         r = requests.put(f"{BASE_URL}/api/turmas/{turma['id']}/od/P1", headers=th,
                          json={"semestre": 0})
-        assert r.status_code == 200
-        assert r.json()["semestre"] is None
+        assert r.status_code == 400

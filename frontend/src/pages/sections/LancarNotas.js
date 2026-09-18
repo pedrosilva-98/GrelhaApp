@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Badge from "@/components/Badge";
-import { calcClassif, calcDominioInstrumento, domColor, NOTA_MAX, isEscala20, formatAvaliacao } from "@/lib/grelha";
+import { calcClassifInstrumento, calcDominioInstrumento, domColor, NOTA_MAX, isEscala20, formatAvaliacao } from "@/lib/grelha";
 import { Info, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
 export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
@@ -204,7 +204,7 @@ export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas,
             <div className="flex items-start gap-3 rounded-lg border border-[#B8D4EA] bg-[#EBF4FA] px-4 py-3 text-sm text-[#2B5A84]" data-testid="notas-help">
                 <Info size={16} className="flex-shrink-0 mt-0.5" />
                 <div>
-                    <strong>Introduza as notas de 0 a 10</strong> em cada questão, independentemente da cotação (pontos). A classificação em percentagem e por domínio é calculada automaticamente, ponderando as respostas pela cotação de cada questão.
+                    <strong>Introduza as notas de 0 a 10</strong> em cada questão, independentemente da cotação (pontos). A classificação de cada domínio é calculada automaticamente, ponderando as respostas pela cotação de cada questão; a avaliação quantitativa global pondera os domínios segundo as ponderações da turma.
                     <div className="mt-1 text-[12px] text-[#2B5A84]/80">
                         Atalhos: <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> desce e grava, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Shift</kbd>+<kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Enter</kbd> sobe, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">Tab</kbd> avança questão, <kbd className="font-mono bg-white/70 border border-[#B8D4EA] rounded px-1">↑ ↓ ← →</kbd> navegam.
                     </div>
@@ -269,7 +269,7 @@ export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas,
                                 {alunos.length === 0 ? (
                                     <tr><td colSpan={inst.questoes.length + dominios.length + (escala20 ? 1 : 2)} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
                                 ) : alunos.map((a, rowIdx) => {
-                                    const classif = calcClassif(instWithNotas, a.id);
+                                    const classif = calcClassifInstrumento(instWithNotas, a.id, dominios);
                                     return (
                                         <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${rowIdx % 2 === 1 ? "bg-page/60" : ""}`}>
                                             <td className="px-5 py-2.5 font-medium text-brand-charcoal whitespace-nowrap">{a.nome}</td>

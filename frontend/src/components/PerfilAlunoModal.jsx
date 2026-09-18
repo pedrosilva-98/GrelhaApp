@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Plus, Save, Trash2, Eye, GraduationCap, Radar as RadarIcon } from "lucide-react";
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, instsParaFinal, isEscala20, formatAvaliacao } from "@/lib/grelha";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, ResponsiveContainer } from "recharts";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, instsParaFinal, isEscala20, formatAvaliacao, odEntry, NOTA_MAX } from "@/lib/grelha";
 import Badge from "@/components/Badge";
 
 const TABS = [
@@ -46,6 +46,24 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
     const mediaFinal = useMemo(() => calcMediaFinal(finalInsts, dominios, aluno.id, turma), [finalInsts, dominios, aluno.id, turma]);
     const nivel = getNivel(mediaFinal);
     const radarData = dominios.map((d) => ({ dominio: d.code, valor: domsPct[d.code] != null ? Number(domsPct[d.code].toFixed(1)) : 0, label: d.nome }));
+
+    // Observação Direta: nota (0-10) por parâmetro e semestre → % para o gráfico/tabela
+    const parametrosOD = turma?.parametros_od || [];
+    const odRows = parametrosOD.map((p) => {
+        const row = { id: p.id, nome: p.nome };
+        for (const sem of [1, 2]) {
+            const e = odEntry(turma, p.id, sem);
+            const nota = e.notas?.[aluno.id];
+            row[`s${sem}`] = nota != null && nota !== "" ? (Number(nota) / NOTA_MAX) * 100 : null;
+            row[`dom${sem}`] = e.dom || null;
+        }
+        return row;
+    });
+    const odRadarData = odRows.map((r) => ({
+        parametro: r.nome.length > 16 ? r.nome.slice(0, 15) + "…" : r.nome,
+        s1: r.s1 != null ? Number(r.s1.toFixed(1)) : 0,
+        s2: r.s2 != null ? Number(r.s2.toFixed(1)) : 0,
+    }));
 
     function updateMedida(key, i, val) {
         setMedidas((s) => ({ ...s, [key]: s[key].map((m, idx) => (idx === i ? val : m)) }));
@@ -187,6 +205,48 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                     </ResponsiveContainer>
                                 </div>
                             </div>
+
+                            {odRows.length > 0 && (
+                                <div data-testid="perfil-od">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-2">Observação direta</div>
+                                    <div className="overflow-hidden rounded-md border border-crisp mb-4">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-page border-b border-crisp">
+                                                <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
+                                                    <th className="px-4 py-2 font-semibold">Parâmetro</th>
+                                                    <th className="px-4 py-2 font-semibold text-right">1º Semestre</th>
+                                                    <th className="px-4 py-2 font-semibold text-right">2º Semestre</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {odRows.map((r) => (
+                                                    <tr key={r.id} className="border-b border-crisp last:border-0" data-testid={`perfil-od-row-${r.id}`}>
+                                                        <td className="px-4 py-2 text-brand-charcoal/80">{r.nome}</td>
+                                                        {[1, 2].map((sem) => (
+                                                            <td key={sem} className="px-4 py-2 text-right tabular-nums font-mono text-sm">
+                                                                {formatAvaliacao(r[`s${sem}`], turma)}
+                                                                {r[`dom${sem}`] && <span className="ml-1.5 text-[10px] text-brand-sage">{r[`dom${sem}`]}</span>}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="w-full h-80 bg-page rounded-md border border-crisp p-2" data-testid="perfil-od-radar" style={{ minHeight: 280 }}>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={280}>
+                                            <RadarChart data={odRadarData} outerRadius="65%">
+                                                <PolarGrid stroke="#E5E3DB" />
+                                                <PolarAngleAxis dataKey="parametro" tick={{ fill: "#5A5F55", fontSize: 11 }} />
+                                                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#9CA69A", fontSize: 10 }} />
+                                                <Radar name="1º Semestre" dataKey="s1" stroke="#2C4A3B" fill="#2C4A3B" fillOpacity={0.3} />
+                                                <Radar name="2º Semestre" dataKey="s2" stroke="#D99E41" fill="#D99E41" fillOpacity={0.3} />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                            </RadarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
 
                             {!escala20 && (
                                 <div className="flex items-center gap-3">
