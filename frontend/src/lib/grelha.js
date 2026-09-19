@@ -182,3 +182,55 @@ export function formatAvaliacao(pct, turma) {
     if (isEscala20(turma)) return String(Math.round((pct / 100) * 20));
     return pct.toFixed(1) + "%";
 }
+
+// ─── Proposta de recuperação (IA) ─────────────────────────────────────────────
+export const LIMIAR_RECUPERACAO = 60;
+
+// % obtida por um aluno numa aprendizagem essencial de UM instrumento
+// (notas 0-10 ponderadas pela cotação das questões associadas). null se não houver notas.
+export function pctAprendizagem(instrumento, compCode, alunoId) {
+    const qs = (instrumento.questoes || []).filter((q) => q.comp === compCode);
+    const notas = instrumento.notas?.[alunoId] || {};
+    const totCot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);
+    const anyNota = qs.some((q) => notas[q.id] != null && notas[q.id] !== "");
+    if (!totCot || !anyNota) return null;
+    const weighted = qs.reduce((s, q) => s + (Number(notas[q.id] || 0) / NOTA_MAX) * Number(q.cotacao || 0), 0);
+    return (weighted / totCot) * 100;
+}
+
+function dataInstrumento(inst) {
+    return `${inst.data || (inst.created_at || "").slice(0, 10)}|${inst.created_at || ""}`;
+}
+
+// Resumo (sem dados pessoais) do momento do aluno, enviado à IA:
+// - domínio com pior média (instrumentos que contam para a final + OD)
+// - aprendizagens essenciais cuja avaliação MAIS RECENTE (por data do instrumento) é < 60%
+export function calcPerfilRecuperacao(turma, aluno, insts, dominios) {
+    const doms = calcMediasDominioAluno(instsParaFinal(insts), aluno.id, dominios, turma);
+    let dominioFraco = null;
+    for (const d of dominios) {
+        const v = doms[d.code];
+        if (v != null && (!dominioFraco || v < dominioFraco.pct)) {
+            dominioFraco = { code: d.code, nome: (d.nome || "").slice(0, 200), pct: Math.round(v * 10) / 10 };
+        }
+    }
+
+    const ordenados = [...insts].sort((a, b) => dataInstrumento(b).localeCompare(dataInstrumento(a)));
+    const aes = [];
+    for (const c of turma?.competencias || []) {
+        for (const inst of ordenados) {
+            const pct = pctAprendizagem(inst, c.code, aluno.id);
+            if (pct == null) continue;
+            if (pct < LIMIAR_RECUPERACAO) aes.push({ code: c.code, nome: (c.nome || "").slice(0, 600), pct: Math.round(pct * 10) / 10 });
+            break; // só conta o instrumento mais recente com notas para esta aprendizagem
+        }
+    }
+    aes.sort((a, b) => a.pct - b.pct);
+
+    return {
+        disciplina: (turma?.disciplina || "").slice(0, 120),
+        ano: (turma?.ano || "").slice(0, 20),
+        dominio_fraco: dominioFraco,
+        aes,
+    };
+}

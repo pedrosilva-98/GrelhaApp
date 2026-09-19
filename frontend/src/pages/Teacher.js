@@ -10,6 +10,7 @@ import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
+import { calcPerfilRecuperacao } from "@/lib/grelha";
 import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
 import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
 
@@ -31,7 +32,8 @@ export default function Teacher() {
     const [showTurmaModal, setShowTurmaModal] = useState(false);
     const [editTurmaModal, setEditTurmaModal] = useState(false);
     const [showTurmaPicker, setShowTurmaPicker] = useState(false);
-    const [showChangePw, setShowChangePw] = useState(false);    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [showChangePw, setShowChangePw] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
 
     const [alunos, setAlunos] = useState([]);
     const [insts, setInsts] = useState([]);
@@ -457,27 +459,38 @@ export default function Teacher() {
                     confirmLabel="Gerar PDFs"
                     secondaryLabel="Enviar por e-mail"
                     onClose={() => setRelatorioInst(null)}
-                    onConfirm={async (chosen) => {
+                    recuperacao={{
+                        gerar: async (aluno, n) => {
+                            const perfil = calcPerfilRecuperacao(turmaAtiva, aluno, insts, dominios);
+                            if (!perfil.aes.length) return { semDados: true };
+                            const { data } = await api.post("/ia/proposta-recuperacao", { ...perfil, num_questoes: n });
+                            return data;
+                        },
+                    }}
+                    onConfirm={async (chosen, opts = {}) => {
                         // Sequential to avoid the browser blocking multiple downloads
                         for (const aluno of chosen) {
                             exportInstrumentoRelatorioAlunoPDF({
                                 user, turma: turmaAtiva, aluno, instrumento: relatorioInst, insts,
+                                proposta: opts.propostas?.[aluno.id], incluirSolucoes: opts.incluirSolucoes,
                             });
                             // Small delay so browsers show all downloads
                             await new Promise((r) => setTimeout(r, 250));
                         }
                     }}
-                    onSecondaryConfirm={async (chosen) => {
+                    onSecondaryConfirm={async (chosen, opts = {}) => {
                         for (const aluno of chosen) {
+                            const proposta = opts.propostas?.[aluno.id];
                             const { blob, filename } = getInstrumentoRelatorioAlunoPDFBlob({
                                 user, turma: turmaAtiva, aluno, instrumento: relatorioInst, insts,
+                                proposta, incluirSolucoes: opts.incluirSolucoes,
                             });
                             const pdf_base64 = await blobToBase64(blob);
                             await api.post("/relatorios/enviar-email", {
                                 destinatario: aluno.email,
                                 aluno_nome: aluno.nome,
                                 assunto: `Relatório de aprendizagens · ${relatorioInst.nome}`,
-                                corpo: `<p>Olá,</p><p>Segue em anexo o relatório de aprendizagens de <strong>${aluno.nome}</strong> referente a "${relatorioInst.nome}".</p>`,
+                                corpo: `<p>Olá,</p><p>Segue em anexo o relatório de aprendizagens de <strong>${aluno.nome}</strong> referente a "${relatorioInst.nome}"${proposta ? ", com uma proposta de recuperação" : ""}.</p>`,
                                 pdf_base64,
                                 filename,
                             });

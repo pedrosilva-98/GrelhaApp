@@ -248,10 +248,81 @@ export function blobToBase64(blob) {
     });
 }
 
+// ─── Proposta de recuperação (gerada por IA e revista pelo professor) ─────────
+// A fonte padrão do jsPDF só desenha WinAnsi (cp1252): converte símbolos comuns e troca o resto por "?".
+const PDF_SIMBOLOS = { "≥": ">=", "≤": "<=", "≠": "!=", "≈": "~", "−": "-", "√": "raiz", "π": "pi", "∞": "infinito", "→": "->", "⇒": "=>" };
+const PDF_CP1252_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+
+export function textoParaPdf(texto) {
+    let out = "";
+    for (const ch of String(texto ?? "")) {
+        if (ch.charCodeAt(0) <= 255 || PDF_CP1252_EXTRA.includes(ch)) out += ch;
+        else out += PDF_SIMBOLOS[ch] ?? "?";
+    }
+    return out;
+}
+
+function addPropostaRecuperacao(doc, proposta, incluirSolucoes) {
+    const questoes = proposta?.questoes || [];
+    if (!questoes.length) return;
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const maxW = W - 80;
+    const limite = H - 60;
+
+    function novaPagina() {
+        doc.addPage();
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(150, 155, 145);
+        doc.text("Proposta gerada com apoio de IA e revista pelo professor.", 40, H - 18);
+        return 50;
+    }
+
+    let y = novaPagina();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(44, 74, 59);
+    doc.text("Proposta de recuperação", 40, y);
+    y += 16;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 100, 100);
+    doc.text(doc.splitTextToSize("Atividade sugerida com base nas aprendizagens em que o desempenho recente foi mais fraco.", maxW), 40, y);
+    y += 26;
+
+    questoes.forEach((q, i) => {
+        const cabecalho = `${i + 1}.${q.ae_code ? `  [${q.ae_code}]` : ""}`;
+        const linhas = doc.splitTextToSize(textoParaPdf(q.enunciado), maxW - 22);
+        const linhasSol = incluirSolucoes && q.solucao ? doc.splitTextToSize(`Solução: ${textoParaPdf(q.solucao)}`, maxW - 22) : [];
+        const altura = 14 + linhas.length * 13 + (linhasSol.length ? linhasSol.length * 12 + 6 : 0) + 14;
+        if (y + altura > limite) y = novaPagina();
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(44, 74, 59);
+        doc.text(cabecalho, 40, y);
+        y += 14;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10.5);
+        doc.setTextColor(44, 62, 53);
+        doc.text(linhas, 62, y);
+        y += linhas.length * 13;
+        if (linhasSol.length) {
+            y += 6;
+            doc.setFontSize(9);
+            doc.setTextColor(138, 90, 25);
+            doc.text(linhasSol, 62, y);
+            y += linhasSol.length * 12;
+        }
+        y += 14;
+    });
+}
+
 // ─── Relatório INDIVIDUAL por aluno (aprendizagens essenciais) ───────────────
 // One PDF per aluno. Header includes aluno name + domain % breakdown, e.g. "Pedro Miguel (CP-89%, RRP-20%)".
 // Body: table of aprendizagens x student % (single column) with <60% highlighted red.
-function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts }) {
+function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts, proposta, incluirSolucoes }) {
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const now = new Date();
     const dateStr = now.toLocaleDateString("pt-PT");
@@ -306,6 +377,7 @@ function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts }) {
             "Este instrumento ainda não tem aprendizagens associadas às questões. Edite o instrumento e atribua uma aprendizagem a cada questão.",
             40, startY + 12, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
         );
+        addPropostaRecuperacao(doc, proposta, incluirSolucoes);
         return { doc, safeName };
     }
 
@@ -354,6 +426,7 @@ function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts }) {
     doc.text("Células a vermelho: aprendizagem abaixo de 60% da cotação.", 40, pageH - 30);
     doc.text("Relatório individual · gerado automaticamente", 40, pageH - 18);
 
+    addPropostaRecuperacao(doc, proposta, incluirSolucoes);
     return { doc, safeName };
 }
 

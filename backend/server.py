@@ -8,6 +8,8 @@ import os
 import uuid
 import logging
 import html
+import json
+import time
 import bcrypt
 import jwt
 import requests
@@ -18,6 +20,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 from pydantic import BaseModel, EmailStr, Field
 
 # ─── DB ───────────────────────────────────────────────────────────────────────
@@ -814,6 +817,154 @@ async def enviar_relatorio_email(body: EmailRelatorioIn, user: dict = Depends(re
     if not data.get("ok"):
         raise HTTPException(status_code=502, detail=f"Falha ao enviar email para {body.destinatario}: {data.get('error', 'erro desconhecido')}")
     return {"ok": True}
+
+# ─── IA: proposta de recuperação (Gemini) ──────────────────────────────────────
+
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+IA_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "questoes": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "ae_code": {"type": "STRING"},
+                    "tipo": {"type": "STRING"},
+                    "dificuldade": {"type": "STRING"},
+                    "enunciado": {"type": "STRING"},
+                    "solucao": {"type": "STRING"},
+                },
+                "required": ["ae_code", "tipo", "dificuldade", "enunciado", "solucao"],
+            },
+        }
+    },
+    "required": ["questoes"],
+}
+
+class AEPerfil(BaseModel):
+    code: str = Field(max_length=40)
+    nome: str = Field(max_length=600)
+    pct: float = Field(ge=0, le=100)
+
+class DominioFraco(BaseModel):
+    code: str = Field(max_length=40)
+    nome: str = Field(max_length=200)
+    pct: float = Field(ge=0, le=100)
+
+class PropostaIn(BaseModel):
+    # Sem qualquer identificador do aluno (nome, email, nº de processo): só o perfil de aprendizagem.
+    disciplina: str = Field(max_length=120)
+    ano: str = Field(max_length=20)
+    dominio_fraco: Optional[DominioFraco] = None
+    aes: List[AEPerfil] = Field(min_length=1, max_length=20)
+    num_questoes: int = Field(ge=1, le=10)
+
+def prompt_proposta(b: PropostaIn) -> str:
+    aes = chr(10).join(f"- {a.code}: {a.nome} (última avaliação: {round(a.pct)}%)" for a in b.aes)
+    dom = ""
+    if b.dominio_fraco:
+        d = b.dominio_fraco
+        dom = f"- Domínio com mais dificuldade: {d.code} - {d.nome} ({round(d.pct)}%)" + chr(10)
+    return f"""És um professor experiente em Portugal a preparar uma atividade de recuperação.
+
+Contexto do aluno (anónimo):
+- Disciplina: {b.disciplina}
+- Ano de escolaridade: {b.ano}
+{dom}- Aprendizagens essenciais com avaliação recente inferior a 60%:
+{aes}
+
+Tarefa: cria exatamente {b.num_questoes} questões de recuperação.
+
+Regras:
+- Usa APENAS as aprendizagens essenciais listadas acima; em cada questão indica o ae_code correspondente.
+- Distribui as questões pelas aprendizagens, dando mais peso às que têm pior avaliação.
+- Adequa o nível ao ano de escolaridade indicado, em português de Portugal, com linguagem clara para o aluno.
+- Começa pelas mais simples e vai aumentando a dificuldade (dificuldade: "básica", "intermédia" ou "avançada").
+- tipo: "resposta curta", "escolha múltipla" ou "problema". Numa escolha múltipla, inclui as opções A) B) C) D) no enunciado.
+- Não dependas de imagens, gráficos nem tabelas.
+- Escreve a matemática só com caracteres simples (ex.: x^2, >=, <=, raiz(9), pi, 3/4). Não uses símbolos Unicode especiais.
+- "solucao": resolução resumida e CORRETA, destinada ao professor. Confirma os cálculos antes de responder.
+"""
+
+def gemini_gerar(prompt: str) -> dict:
+    key = os.environ.get("GEMINI_API_KEY", "")
+    modelos = [m for m in (os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"), os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")) if m]
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": IA_SCHEMA,
+            "temperature": 0.7,
+            "maxOutputTokens": 8192,
+        },
+    }
+    ultimo = "erro desconhecido"
+    for modelo in modelos:
+        for tentativa in range(1, 3):
+            try:
+                r = requests.post(
+                    f"{GEMINI_BASE}/models/{modelo}:generateContent",
+                    headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                    json=body, timeout=45,
+                )
+            except requests.RequestException as e:
+                ultimo = f"ligação ({type(e).__name__})"
+                time.sleep(2 * tentativa)
+                continue
+            if r.status_code in (429, 503):
+                ultimo = f"{r.status_code} temporário"
+                time.sleep(3 * tentativa)
+                continue
+            if r.status_code == 404:
+                ultimo = f"modelo {modelo} indisponível"
+                break
+            if r.status_code != 200:
+                log.warning("Gemini %s (%s): %s", r.status_code, modelo, r.text[:300])
+                raise HTTPException(status_code=502, detail=f"O serviço de IA devolveu um erro ({r.status_code}).")
+            try:
+                partes = r.json()["candidates"][0]["content"]["parts"]
+                texto = "".join(p.get("text", "") for p in partes if not p.get("thought"))
+                return json.loads(texto)
+            except (KeyError, IndexError, ValueError, TypeError):
+                ultimo = "resposta inválida"
+    raise HTTPException(status_code=502, detail=f"O serviço de IA está indisponível de momento ({ultimo}). Tenta novamente daqui a pouco.")
+
+def limpar_questoes(data: dict, n: int, codes: set) -> list:
+    out = []
+    for q in (data.get("questoes") or [])[:n]:
+        if not isinstance(q, dict):
+            continue
+        enunciado = str(q.get("enunciado") or "").strip()[:2000]
+        if not enunciado:
+            continue
+        code = str(q.get("ae_code") or "").strip()
+        out.append({
+            "ae_code": code if code in codes else "",
+            "tipo": str(q.get("tipo") or "").strip()[:40],
+            "dificuldade": str(q.get("dificuldade") or "").strip()[:20],
+            "enunciado": enunciado,
+            "solucao": str(q.get("solucao") or "").strip()[:2000],
+        })
+    return out
+
+@api.post("/ia/proposta-recuperacao")
+async def proposta_recuperacao(body: PropostaIn, user: dict = Depends(require_teacher)):
+    if not os.environ.get("GEMINI_API_KEY"):
+        raise HTTPException(status_code=503, detail="A IA não está configurada no servidor (GEMINI_API_KEY).")
+    limite = int(os.environ.get("IA_MAX_POR_DIA", "200"))
+    dia = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    uso = await db.ia_uso.find_one_and_update(
+        {"prof_id": user["id"], "dia": dia}, {"$inc": {"n": 1}}, upsert=True, return_document=ReturnDocument.AFTER,
+    )
+    if uso["n"] > limite:
+        raise HTTPException(status_code=429, detail=f"Atingiste o limite diário de {limite} propostas de IA. Tenta amanhã.")
+    data = await run_in_threadpool(gemini_gerar, prompt_proposta(body))
+    questoes = limpar_questoes(data, body.num_questoes, {a.code for a in body.aes})
+    if not questoes:
+        raise HTTPException(status_code=502, detail="A IA não devolveu questões válidas. Tenta novamente.")
+    return {"questoes": questoes}
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
