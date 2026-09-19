@@ -34,12 +34,12 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         <Upload size={14} /> Importar Excel/CSV
                     </button>
                 </div>
-                <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_140px_120px_1fr_auto] gap-3 items-end">
+                <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.3fr_170px_130px_1.3fr_auto] gap-3 items-end">
                     <div>
                         <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nome completo</label>
                         <input
                             data-testid="aluno-nome-input"
-                            className="input-forest"
+                            className="input-forest h-[42px]"
                             placeholder="Ex: Ana Silva"
                             value={nome}
                             onChange={(e) => setNome(e.target.value)}
@@ -51,7 +51,7 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         <input
                             data-testid="aluno-dn-input"
                             type="date"
-                            className="input-forest"
+                            className="input-forest h-[42px]"
                             value={dn}
                             onChange={(e) => setDn(e.target.value)}
                             required
@@ -61,7 +61,7 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand-sage block mb-1">Nº de processo</label>
                         <input
                             data-testid="aluno-nproc-input"
-                            className="input-forest font-mono text-sm"
+                            className="input-forest h-[42px] font-mono text-sm"
                             placeholder="Ex: 12345"
                             value={nProc}
                             onChange={(e) => setNProc(e.target.value)}
@@ -73,13 +73,13 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         <input
                             data-testid="aluno-email-input"
                             type="email"
-                            className="input-forest"
+                            className="input-forest h-[42px]"
                             placeholder="aluno@escola.pt"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                         />
                     </div>
-                    <button data-testid="add-aluno-btn" type="submit" className="btn-primary whitespace-nowrap h-[42px]">
+                    <button data-testid="add-aluno-btn" type="submit" className="btn-primary whitespace-nowrap h-[42px] justify-center md:col-span-2 lg:col-span-1">
                         <UserPlus size={16} /> Adicionar
                     </button>
                 </form>

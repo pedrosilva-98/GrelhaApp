@@ -139,7 +139,7 @@ export default function Instrumentos({
                         <div>
                             <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Tipo</label>
                             <select data-testid="inst-tipo" className="input-forest" value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))}>
-                                {TIPOS_INSTRUMENTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                                {(TIPOS_INSTRUMENTO.includes(form.tipo) ? TIPOS_INSTRUMENTO : [form.tipo, ...TIPOS_INSTRUMENTO]).map((t) => <option key={t} value={t}>{t}</option>)}
                             </select>
                             {TIPOS_SEM_NOTA_FINAL.includes(form.tipo) && (
                                 <div className="text-[11px] text-brand-sage mt-1 italic">Não conta para a avaliação final.</div>

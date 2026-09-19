@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { domColor } from "@/lib/grelha";
-import { Save, Plus, X, Upload, Sparkles, CalendarRange, ListChecks, Target } from "lucide-react";
+import { Save, Plus, X, Upload, CalendarRange } from "lucide-react";
 import CompetenciasImportModal from "@/components/CompetenciasImportModal";
 
 export default function Config({
@@ -140,12 +140,9 @@ function MetaSucessoSection({ turma, saveTurmaConfig }) {
 
     return (
         <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                <Target size={12} /> Objetivo
-            </div>
             <h2 className="font-serif text-xl text-brand-forest mb-2">Meta de sucesso do Agrupamento</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
-                Percentagem de referência definida pelo Agrupamento (por exemplo, <strong>60%</strong>). Aparecerá no Resumo ao lado da média da turma.
+                Aparecerá no Resumo sob a taxa de sucesso.
             </p>
             <div className="card-surface p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3 items-end">
@@ -205,7 +202,6 @@ function DominiosSection({ dominios, saveDominios }) {
 
     return (
         <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">Definições da turma</div>
             <h2 className="font-serif text-xl text-brand-forest mb-2">Domínios de avaliação</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
                 Configure os domínios utilizados nesta turma. Pode adicionar/remover, mudar o nome e ajustar a ponderação. A soma tem de ser <strong>100%</strong>.
@@ -304,9 +300,6 @@ function ParametrosODSection({ turma, saveTurmaConfig }) {
 
     return (
         <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                <ListChecks size={12} /> Rubrica
-            </div>
             <h2 className="font-serif text-xl text-brand-forest mb-2">Parâmetros de Observação Direta</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
                 Configure os parâmetros a avaliar por observação direta. Estes parâmetros aparecerão na página <strong>Instrumentos de avaliação</strong> para lhes atribuir uma nota 0–10 por aluno e escolher o domínio correspondente.
@@ -414,9 +407,6 @@ function CompetenciasSection({ competencias, saveAprendizagems }) {
 
     return (
         <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1 flex items-center gap-2">
-                <Sparkles size={12} /> Aprendizagens
-            </div>
             <h2 className="font-serif text-xl text-brand-forest mb-2">Aprendizagens essenciais</h2>
             <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
                 Configure as aprendizagens essenciais desta turma. Depois, pode associar uma aprendizagem a cada questão dos instrumentos. Pode adicionar manualmente ou importar a partir de Excel/CSV.

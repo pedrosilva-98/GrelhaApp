@@ -16,7 +16,8 @@ export const TIPOS_INSTRUMENTO = [
     "Trabalhos Individuais ou de Grupo",
     "Avaliação de Diagnóstico",
     "Rubricas",
-    "Trabalhos de Pesquisa e Relatórios",
+    "Trabalhos de Pesquisa",
+    "Relatórios",
 ];
 
 // Tipos cujos resultados não contam para a avaliação final — continuam a admitir
