@@ -125,6 +125,16 @@ async def get_turma_or_404(turma_id: str, user: dict) -> dict:
     t["od_avaliacoes"] = normalize_od(t.get("od_avaliacoes"))
     return t
 
+async def get_turma_any_or_404(turma_id: str) -> dict:
+    """Como get_turma_or_404, mas sem restringir ao dono — uso exclusivo do admin."""
+    t = await db.turmas.find_one({"id": turma_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Turma não encontrada")
+    if "dominios" not in t or not t["dominios"]:
+        t["dominios"] = [dict(d) for d in DEFAULT_DOMINIOS]
+    t["od_avaliacoes"] = normalize_od(t.get("od_avaliacoes"))
+    return t
+
 # ─── Models ───────────────────────────────────────────────────────────────────
 
 class LoginIn(BaseModel):
@@ -138,6 +148,7 @@ class TeacherCreate(BaseModel):
     agrupamento: str = ""
     ano_letivo: str = ""
     max_turmas: Optional[int] = Field(default=None, ge=1)
+    ia_ativa: bool = False
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -145,6 +156,9 @@ class PasswordChange(BaseModel):
 
 class PasswordReset(BaseModel):
     new_password: str
+
+class IAAtivaUpdate(BaseModel):
+    ia_ativa: bool
 
 class TurmaCreate(BaseModel):
     disciplina: str
@@ -301,6 +315,7 @@ async def create_teacher(body: TeacherCreate, _: dict = Depends(require_admin)):
         "agrupamento": (body.agrupamento or "").strip(),
         "ano_letivo": (body.ano_letivo or "").strip(),
         "max_turmas": body.max_turmas,
+        "ia_ativa": body.ia_ativa,
         "role": "teacher",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -331,6 +346,16 @@ async def reset_teacher_password(teacher_id: str, body: PasswordReset, _: dict =
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Professor não encontrado")
     return {"ok": True}
+
+@api.put("/admin/teachers/{teacher_id}/ia")
+async def set_teacher_ia(teacher_id: str, body: IAAtivaUpdate, _: dict = Depends(require_admin)):
+    res = await db.users.update_one(
+        {"id": teacher_id, "role": "teacher"},
+        {"$set": {"ia_ativa": body.ia_ativa}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    return {"ia_ativa": body.ia_ativa}
 
 # ─── Turmas ───────────────────────────────────────────────────────────────────
 
@@ -430,9 +455,33 @@ async def update_dominios(turma_id: str, body: DominiosUpdate, user: dict = Depe
     )
     return {"dominios": new_dominios}
 
-@api.put("/turmas/{turma_id}/competencias")
-async def update_competencias(turma_id: str, body: CompetenciasUpdate, user: dict = Depends(require_teacher)):
-    turma = await get_turma_or_404(turma_id, user)
+@api.get("/admin/teachers/{teacher_id}/turmas")
+async def admin_list_teacher_turmas(teacher_id: str, _: dict = Depends(require_admin)):
+    if not await db.users.find_one({"id": teacher_id, "role": "teacher"}, {"id": 1}):
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    docs = await db.turmas.find({"prof_id": teacher_id}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+    for d in docs:
+        if "dominios" not in d or not d["dominios"]:
+            d["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
+    return docs
+
+@api.get("/admin/turmas")
+async def admin_list_all_turmas(_: dict = Depends(require_admin)):
+    """Todas as turmas de todos os professores, com o nome/email do professor — para o relatório de configurações."""
+    turmas = await db.turmas.find({}, {"_id": 0}).sort("created_at", 1).to_list(10000)
+    teachers = await db.users.find({"role": "teacher"}, {"_id": 0, "id": 1, "nome": 1, "email": 1}).to_list(10000)
+    by_id = {t["id"]: t for t in teachers}
+    out = []
+    for t in turmas:
+        if "dominios" not in t or not t["dominios"]:
+            t["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
+        prof = by_id.get(t.get("prof_id"), {})
+        out.append({**t, "prof_nome": prof.get("nome", ""), "prof_email": prof.get("email", "")})
+    return out
+
+@api.put("/admin/turmas/{turma_id}/competencias")
+async def admin_update_competencias(turma_id: str, body: CompetenciasUpdate, _: dict = Depends(require_admin)):
+    turma = await get_turma_any_or_404(turma_id)
     # Unique non-empty codes
     codes = [c.code.strip() for c in body.competencias]
     if any(not c for c in codes):
@@ -456,7 +505,7 @@ async def update_competencias(turma_id: str, body: CompetenciasUpdate, user: dic
             )
     new_comps = [{"code": c.code.strip(), "nome": c.nome.strip()} for c in body.competencias]
     await db.turmas.update_one(
-        {"id": turma_id, "prof_id": user["id"]},
+        {"id": turma_id},
         {"$set": {"competencias": new_comps}},
     )
     return {"competencias": new_comps}
@@ -951,6 +1000,8 @@ def limpar_questoes(data: dict, n: int, codes: set) -> list:
 
 @api.post("/ia/proposta-recuperacao")
 async def proposta_recuperacao(body: PropostaIn, user: dict = Depends(require_teacher)):
+    if not user.get("ia_ativa"):
+        raise HTTPException(status_code=403, detail="A proposta de recuperação por IA não está ativada para esta conta. Contacta o administrador.")
     if not os.environ.get("GEMINI_API_KEY"):
         raise HTTPException(status_code=503, detail="A IA não está configurada no servidor (GEMINI_API_KEY).")
     limite = int(os.environ.get("IA_MAX_POR_DIA", "200"))

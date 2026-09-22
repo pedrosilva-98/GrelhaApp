@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ResetPasswordModal from "@/components/ResetPasswordModal";
-import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, NotebookPen } from "lucide-react";
+import TeacherTurmasModal from "@/components/TeacherTurmasModal";
+import { exportConfiguracoesTurmasPDF } from "@/lib/pdf";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, Download, Loader2, NotebookPen } from "lucide-react";
 
 export default function Admin() {
     const { user, logout } = useAuth();
@@ -10,10 +12,13 @@ export default function Admin() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [error, setError] = useState("");
-    const [form, setForm] = useState({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "" });
+    const [form, setForm] = useState({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "", ia_ativa: false });
     const [creating, setCreating] = useState(false);
     const [justCreated, setJustCreated] = useState(null);
     const [resetTarget, setResetTarget] = useState(null);
+    const [togglingIa, setTogglingIa] = useState(null);
+    const [turmasTarget, setTurmasTarget] = useState(null);
+    const [exportingConfig, setExportingConfig] = useState(false);
 
     async function load() {
         try {
@@ -37,13 +42,26 @@ export default function Admin() {
                 max_turmas: form.max_turmas === "" ? null : parseInt(form.max_turmas, 10),
             });
             setJustCreated({ email: form.email, password: form.password });
-            setForm({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "" });
+            setForm({ nome: "", email: "", password: "", agrupamento: "", ano_letivo: "", max_turmas: "", ia_ativa: false });
             setShowModal(false);
             await load();
         } catch (e) {
             setError(formatApiError(e));
         } finally {
             setCreating(false);
+        }
+    }
+
+    async function toggleIa(t) {
+        setTogglingIa(t.id);
+        setError("");
+        try {
+            await api.put(`/admin/teachers/${t.id}/ia`, { ia_ativa: !t.ia_ativa });
+            setTeachers((s) => s.map((x) => (x.id === t.id ? { ...x, ia_ativa: !t.ia_ativa } : x)));
+        } catch (e) {
+            setError(formatApiError(e));
+        } finally {
+            setTogglingIa(null);
         }
     }
 
@@ -56,6 +74,19 @@ export default function Admin() {
     }
 
     function copy(text) { navigator.clipboard.writeText(text); }
+
+    async function exportarConfiguracoes() {
+        setExportingConfig(true);
+        setError("");
+        try {
+            const r = await api.get("/admin/turmas");
+            exportConfiguracoesTurmasPDF({ turmas: r.data });
+        } catch (e) {
+            setError(formatApiError(e));
+        } finally {
+            setExportingConfig(false);
+        }
+    }
 
     return (
         <div className="min-h-screen">
@@ -91,13 +122,24 @@ export default function Admin() {
                             Crie e faça a gestão das contas de professores. Cada docente irá criar e gerir as suas próprias turmas, disciplinas e anos após o primeiro acesso.
                         </p>
                     </div>
-                    <button
-                        data-testid="admin-add-teacher-btn"
-                        onClick={() => setShowModal(true)}
-                        className="btn-primary"
-                    >
-                        <Plus size={16} /> Novo professor
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            data-testid="admin-export-config-btn"
+                            onClick={exportarConfiguracoes}
+                            disabled={exportingConfig}
+                            className="btn-ghost"
+                        >
+                            {exportingConfig ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            Exportar relatório de configurações
+                        </button>
+                        <button
+                            data-testid="admin-add-teacher-btn"
+                            onClick={() => setShowModal(true)}
+                            className="btn-primary"
+                        >
+                            <Plus size={16} /> Novo professor
+                        </button>
+                    </div>
                 </div>
 
                 {justCreated && (
@@ -127,15 +169,16 @@ export default function Admin() {
                                 <th className="px-5 py-3 font-semibold">Email</th>
                                 <th className="px-5 py-3 font-semibold">Ano letivo</th>
                                 <th className="px-5 py-3 font-semibold">Máx. turmas</th>
+                                <th className="px-5 py-3 font-semibold">IA</th>
                                 <th className="px-5 py-3 font-semibold">Criado a</th>
                                 <th className="px-5 py-3 font-semibold w-16"></th>
                             </tr>
                         </thead>
                         <tbody data-testid="teachers-list">
                             {loading ? (
-                                <tr><td colSpan={6} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
+                                <tr><td colSpan={7} className="px-5 py-10 text-center text-brand-sage">A carregar...</td></tr>
                             ) : teachers.length === 0 ? (
-                                <tr><td colSpan={6} className="px-5 py-16 text-center text-brand-sage">
+                                <tr><td colSpan={7} className="px-5 py-16 text-center text-brand-sage">
                                     <GraduationCap className="mx-auto mb-3 opacity-40" size={32} />
                                     Ainda não criou nenhuma conta de professor.
                                 </td></tr>
@@ -145,11 +188,32 @@ export default function Admin() {
                                     <td className="px-5 py-3 font-mono text-xs text-brand-charcoal/80">{t.email}</td>
                                     <td className="px-5 py-3 text-brand-charcoal/70 text-xs">{t.ano_letivo || "—"}</td>
                                     <td className="px-5 py-3 text-brand-charcoal/70 text-xs tabular-nums">{t.max_turmas ?? "—"}</td>
+                                    <td className="px-5 py-3">
+                                        <button
+                                            data-testid={`toggle-ia-${t.id}`}
+                                            onClick={() => toggleIa(t)}
+                                            disabled={togglingIa === t.id}
+                                            title={t.ia_ativa ? "Desativar proposta de recuperação com IA" : "Ativar proposta de recuperação com IA"}
+                                            className={`text-[11px] px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                                t.ia_ativa ? "bg-[#E6F3E6] text-[#2E6B2E] border-[#B3D9B3]" : "bg-page text-brand-charcoal/60 border-crisp"
+                                            }`}
+                                        >
+                                            <Sparkles size={11} /> {t.ia_ativa ? "Ativa" : "Inativa"}
+                                        </button>
+                                    </td>
                                     <td className="px-5 py-3 text-brand-charcoal/60 text-xs">
                                         {t.created_at ? new Date(t.created_at).toLocaleDateString("pt-PT") : "—"}
                                     </td>
                                     <td className="px-5 py-3 text-right">
                                         <div className="flex justify-end gap-1">
+                                            <button
+                                                data-testid={`turmas-teacher-${t.id}`}
+                                                onClick={() => setTurmasTarget(t)}
+                                                className="btn-ghost !px-2 !py-1.5"
+                                                title="Turmas e Aprendizagens Essenciais"
+                                            >
+                                                <School size={14} />
+                                            </button>
                                             <button
                                                 data-testid={`reset-teacher-${t.id}`}
                                                 onClick={() => setResetTarget(t)}
@@ -209,6 +273,19 @@ export default function Admin() {
                                     <input required type="number" min={1} data-testid="teacher-max-turmas" className="input-forest" value={form.max_turmas} onChange={(e) => setForm((f) => ({ ...f, max_turmas: e.target.value }))} placeholder="Ex: 6" />
                                 </div>
                             </div>
+                            <label className="flex items-start gap-2.5 text-sm text-brand-charcoal cursor-pointer bg-page border border-crisp rounded-md px-3 py-2.5">
+                                <input
+                                    type="checkbox"
+                                    data-testid="teacher-ia-ativa"
+                                    checked={form.ia_ativa}
+                                    onChange={(e) => setForm((f) => ({ ...f, ia_ativa: e.target.checked }))}
+                                    className="accent-[#2C4A3B] mt-0.5"
+                                />
+                                <span>
+                                    <span className="flex items-center gap-1.5 font-medium"><Sparkles size={13} className="text-brand-ochre" /> Proposta de recuperação com IA</span>
+                                    <span className="block text-xs text-brand-charcoal/60 mt-0.5">Permite ao professor gerar, no relatório por aprendizagens, uma proposta de atividade de recuperação com apoio de IA.</span>
+                                </span>
+                            </label>
                             <div className="flex gap-3 pt-3">
                                 <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1 justify-center">Cancelar</button>
                                 <button type="submit" data-testid="teacher-submit" disabled={creating} className="btn-primary flex-1 justify-center">
@@ -224,6 +301,13 @@ export default function Admin() {
                 <ResetPasswordModal
                     teacher={resetTarget}
                     onClose={() => setResetTarget(null)}
+                />
+            )}
+
+            {turmasTarget && (
+                <TeacherTurmasModal
+                    teacher={turmasTarget}
+                    onClose={() => setTurmasTarget(null)}
                 />
             )}
         </div>

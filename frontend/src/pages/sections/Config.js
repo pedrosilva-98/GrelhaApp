@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import { domColor } from "@/lib/grelha";
 import { Save, Plus, X, Upload, CalendarRange } from "lucide-react";
-import CompetenciasImportModal from "@/components/CompetenciasImportModal";
 
 export default function Config({
     turma,
     dominios,
-    competencias,
     saveDominios,
-    saveAprendizagems,
     saveTurmaConfig,
 }) {
     return (
@@ -17,7 +14,9 @@ export default function Config({
             <MetaSucessoSection turma={turma} saveTurmaConfig={saveTurmaConfig} />
             <DominiosSection dominios={dominios} saveDominios={saveDominios} />
             <ParametrosODSection turma={turma} saveTurmaConfig={saveTurmaConfig} />
-            <CompetenciasSection competencias={competencias || []} saveAprendizagems={saveAprendizagems} />
+            <div className="card-surface p-5 text-sm text-brand-charcoal/70">
+                As <strong>Aprendizagens essenciais</strong> desta turma são agora geridas pelo administrador do agrupamento. Continuam disponíveis para associar a questões nos instrumentos de avaliação.
+            </div>
         </div>
     );
 }
@@ -345,128 +344,3 @@ function ParametrosODSection({ turma, saveTurmaConfig }) {
     );
 }
 
-// ─── Aprendizagens Essenciais ────────────────────────────────────────────────
-function CompetenciasSection({ competencias, saveAprendizagems }) {
-    const [items, setItems] = useState(competencias || []);
-    const [busy, setBusy] = useState(false);
-    const [saved, setSaved] = useState(false);
-    const [error, setError] = useState("");
-    const [showImport, setShowImport] = useState(false);
-
-    useEffect(() => { setItems(competencias || []); setError(""); }, [competencias]);
-
-    // Codes are auto-assigned on save when empty; only require uniqueness among non-empty codes.
-    const nonEmptyCodes = items.map((c) => (c.code || "").trim()).filter(Boolean);
-    const codesUnique = new Set(nonEmptyCodes).size === nonEmptyCodes.length;
-    const namesFilled = items.every((c) => (c.nome || "").trim().length > 0);
-    const valid = codesUnique && namesFilled;
-
-    function update(i, key, val) { setItems((s) => s.map((c, idx) => (idx === i ? { ...c, [key]: val } : c))); }
-    function add() {
-        setItems((s) => [...s, { code: "", nome: "" }]);
-    }
-    function remove(i) { setItems((s) => s.filter((_, idx) => idx !== i)); }
-
-    async function save() {
-        setError(""); setBusy(true);
-        try {
-            // Auto-assign missing codes; keep existing ones.
-            const usedCodes = new Set(items.map((c) => (c.code || "").trim()).filter(Boolean));
-            let counter = 1;
-            const withCodes = items.map((c) => {
-                let code = (c.code || "").trim();
-                if (!code) {
-                    while (usedCodes.has(`AE${counter}`)) counter++;
-                    code = `AE${counter}`;
-                    usedCodes.add(code);
-                    counter++;
-                }
-                return { code, nome: (c.nome || "").trim() };
-            });
-            await saveAprendizagems(withCodes);
-            setItems(withCodes);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 1500);
-        } catch (e) {
-            setError(e?.response?.data?.detail || e?.message || "Erro ao guardar.");
-        } finally { setBusy(false); }
-    }
-
-    async function handleImport(newComps) {
-        const merged = [...items];
-        const codes = new Set(items.map((c) => c.code));
-        for (const c of newComps) {
-            if (!codes.has(c.code)) {
-                merged.push(c);
-                codes.add(c.code);
-            }
-        }
-        await saveAprendizagems(merged);
-        setItems(merged);
-    }
-
-    return (
-        <div>
-            <h2 className="font-serif text-xl text-brand-forest mb-2">Aprendizagens essenciais</h2>
-            <p className="text-sm text-brand-charcoal/70 mb-6 leading-relaxed max-w-lg">
-                Configure as aprendizagens essenciais desta turma. Depois, pode associar uma aprendizagem a cada questão dos instrumentos. Pode adicionar manualmente ou importar a partir de Excel/CSV.
-            </p>
-
-            <div className="card-surface p-6 space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="text-sm">
-                        <span className="text-brand-sage text-[11px] uppercase tracking-wider">Total</span>
-                        <span className="font-serif text-2xl text-brand-forest ml-3 tabular-nums">{items.length}</span>
-                    </div>
-                    <button data-testid="comp-import-btn" onClick={() => setShowImport(true)} className="btn-ghost text-sm">
-                        <Upload size={14} /> Importar Excel/CSV
-                    </button>
-                </div>
-
-                {items.length === 0 ? (
-                    <div className="border-2 border-dashed border-crisp rounded-lg py-8 text-center text-brand-sage text-sm">
-                        Ainda não há aprendizagens definidas para esta turma.
-                    </div>
-                ) : (
-                    <div className="space-y-3" data-testid="comp-list">
-                        {items.map((c, i) => (
-                            <div key={i} className="flex items-start gap-2" data-testid={`comp-row-${i}`}>
-                                <span className="text-xs font-mono text-brand-sage w-8 mt-3 tabular-nums shrink-0">{String(i + 1).padStart(2, "0")}</span>
-                                <textarea
-                                    data-testid={`comp-nome-${i}`}
-                                    className="input-forest flex-1 text-sm leading-relaxed resize-y"
-                                    rows={3}
-                                    value={c.nome}
-                                    onChange={(e) => update(i, "nome", e.target.value)}
-                                    placeholder="Descreva a aprendizagem essencial..."
-                                />
-                                <button type="button" onClick={() => remove(i)} className="btn-danger-ghost mt-2 shrink-0" title="Remover">
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                <button type="button" onClick={add} data-testid="comp-add-btn" className="text-sm text-brand-forest hover:text-brand-forest-hover flex items-center gap-1">
-                    <Plus size={14} /> Adicionar aprendizagem
-                </button>
-
-                {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
-
-                <button data-testid="comp-save-btn" onClick={save} disabled={!valid || busy} className="btn-primary w-full justify-center">
-                    <Save size={16} />
-                    {saved ? "Guardado ✓" : busy ? "A guardar..." : "Guardar aprendizagens"}
-                </button>
-            </div>
-
-            {showImport && (
-                <CompetenciasImportModal
-                    existing={items}
-                    onClose={() => setShowImport(false)}
-                    onImport={handleImport}
-                />
-            )}
-        </div>
-    );
-}

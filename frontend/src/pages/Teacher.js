@@ -140,11 +140,6 @@ export default function Teacher() {
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, dominios: data.dominios } : t)));
     }
 
-    async function saveAprendizagems(newComps) {
-        const { data } = await api.put(`/turmas/${turmaId}/competencias`, { competencias: newComps });
-        setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, competencias: data.competencias } : t)));
-    }
-
     async function saveTurmaConfig(payload) {
         const { data } = await api.put(`/turmas/${turmaId}/config`, payload);
         setTurmas((s) => s.map((t) => (t.id === turmaId ? { ...t, ...data } : t)));
@@ -425,9 +420,7 @@ export default function Teacher() {
                             <Config
                                 turma={turmaAtiva}
                                 dominios={dominios}
-                                competencias={competencias}
                                 saveDominios={saveDominios}
-                                saveAprendizagems={saveAprendizagems}
                                 saveTurmaConfig={saveTurmaConfig}
                             />
                         )}
@@ -459,14 +452,14 @@ export default function Teacher() {
                     confirmLabel="Gerar PDFs"
                     secondaryLabel="Enviar por e-mail"
                     onClose={() => setRelatorioInst(null)}
-                    recuperacao={{
+                    recuperacao={user?.ia_ativa ? {
                         gerar: async (aluno, n) => {
                             const perfil = calcPerfilRecuperacao(turmaAtiva, aluno, insts, dominios);
                             if (!perfil.aes.length) return { semDados: true };
                             const { data } = await api.post("/ia/proposta-recuperacao", { ...perfil, num_questoes: n });
                             return data;
                         },
-                    }}
+                    } : undefined}
                     onConfirm={async (chosen, opts = {}) => {
                         // Sequential to avoid the browser blocking multiple downloads
                         for (const aluno of chosen) {

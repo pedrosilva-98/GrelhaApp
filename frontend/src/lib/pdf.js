@@ -440,3 +440,122 @@ export function getInstrumentoRelatorioAlunoPDFBlob(params) {
     const { doc, safeName } = buildRelatorioAlunoDoc(params);
     return { blob: doc.output("blob"), filename: `relatorio_aluno_${safeName}.pdf` };
 }
+
+// ─── Relatório de configurações (Admin) ───────────────────────────────────────
+// Uma linha de contexto + uma tabela de domínios por turma, agrupadas por professor.
+export function exportConfiguracoesTurmasPDF({ turmas }) {
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("pt-PT");
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const maxW = W - 80;
+
+    function cabecalho(pagina) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(44, 74, 59);
+        doc.text("Relatório de configurações das turmas", 40, 40);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(90, 100, 100);
+        doc.text(`Gerado em ${dateStr}`, W - 40, 40, { align: "right" });
+        doc.setDrawColor(229, 227, 219);
+        doc.line(40, 52, W - 40, 52);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 155, 145);
+        doc.text(`Página ${pagina}`, W - 40, H - 20, { align: "right" });
+        return 74;
+    }
+
+    let pagina = 1;
+    let y = cabecalho(pagina);
+    function espaco(altura) {
+        if (y + altura > H - 40) {
+            doc.addPage();
+            pagina += 1;
+            y = cabecalho(pagina);
+        }
+    }
+
+    const porProfessor = new Map();
+    for (const t of turmas || []) {
+        const chave = t.prof_email || t.prof_nome || "—";
+        if (!porProfessor.has(chave)) porProfessor.set(chave, { nome: t.prof_nome || "—", email: t.prof_email || "", turmas: [] });
+        porProfessor.get(chave).turmas.push(t);
+    }
+
+    if (porProfessor.size === 0) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        doc.setTextColor(90, 100, 100);
+        doc.text("Ainda não existem turmas criadas.", 40, y + 10);
+    }
+
+    for (const { nome, email, turmas: turmasProf } of porProfessor.values()) {
+        espaco(30);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12.5);
+        doc.setTextColor(44, 74, 59);
+        doc.text(nome + (email ? `  ·  ${email}` : ""), 40, y);
+        y += 18;
+
+        for (const t of turmasProf) {
+            const escala20 = isEscala20(t);
+            espaco(40);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10.5);
+            doc.setTextColor(44, 62, 53);
+            doc.text(`${t.disciplina} · ${t.ano} ${t.turma}${escala20 ? "  (escala 0-20)" : ""}`, 52, y);
+            y += 14;
+
+            const sems = t.semestres || {};
+            const s1 = sems["1"], s2 = sems["2"];
+            const semTxt = (s1 || s2)
+                ? [s1 && `1º: ${s1.inicio || "?"} a ${s1.fim || "?"} (${s1.peso}%)`, s2 && `2º: ${s2.inicio || "?"} a ${s2.fim || "?"} (${s2.peso}%)`].filter(Boolean).join("   ·   ")
+                : "não configurados";
+            const meta = t.meta_sucesso != null ? `${t.meta_sucesso}%` : "não definida";
+            const params = (t.parametros_od || []).map((p) => p.nome).join(", ") || "nenhum";
+            const aes = (t.competencias || []).length;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            doc.setTextColor(90, 100, 100);
+            const linhas = [
+                `Semestres: ${semTxt}`,
+                `Meta de sucesso: ${meta}`,
+                `Parâmetros de Observação Direta: ${params}`,
+                `Aprendizagens essenciais: ${aes}`,
+            ];
+            for (const l of linhas) {
+                const wrap = doc.splitTextToSize(l, maxW - 12);
+                espaco(wrap.length * 11 + 2);
+                doc.text(wrap, 62, y);
+                y += wrap.length * 11 + 2;
+            }
+            y += 4;
+
+            const dominios = t.dominios || [];
+            if (dominios.length) {
+                espaco(24 + dominios.length * 16);
+                autoTable(doc, {
+                    startY: y,
+                    margin: { left: 62, right: 40 },
+                    head: [["Domínio", "Nome", "Ponderação"]],
+                    body: dominios.map((d) => [d.code, d.nome, `${d.peso}%`]),
+                    theme: "grid",
+                    styles: { font: "helvetica", fontSize: 8.5, textColor: [44, 62, 53], lineColor: [229, 227, 219], lineWidth: 0.5, cellPadding: 4 },
+                    headStyles: { fillColor: [44, 74, 59], textColor: [249, 248, 246], fontStyle: "bold", fontSize: 8.5 },
+                    alternateRowStyles: { fillColor: [249, 248, 246] },
+                    columnStyles: { 0: { cellWidth: 70 }, 2: { cellWidth: 80, halign: "right" } },
+                });
+                y = doc.lastAutoTable.finalY + 16;
+            } else {
+                y += 6;
+            }
+        }
+        y += 8;
+    }
+
+    doc.save(`relatorio_configuracoes_${dateStr.replace(/\//g, "-")}.pdf`);
+}
