@@ -465,20 +465,6 @@ async def admin_list_teacher_turmas(teacher_id: str, _: dict = Depends(require_a
             d["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
     return docs
 
-@api.get("/admin/turmas")
-async def admin_list_all_turmas(_: dict = Depends(require_admin)):
-    """Todas as turmas de todos os professores, com o nome/email do professor — para o relatório de configurações."""
-    turmas = await db.turmas.find({}, {"_id": 0}).sort("created_at", 1).to_list(10000)
-    teachers = await db.users.find({"role": "teacher"}, {"_id": 0, "id": 1, "nome": 1, "email": 1}).to_list(10000)
-    by_id = {t["id"]: t for t in teachers}
-    out = []
-    for t in turmas:
-        if "dominios" not in t or not t["dominios"]:
-            t["dominios"] = [dict(x) for x in DEFAULT_DOMINIOS]
-        prof = by_id.get(t.get("prof_id"), {})
-        out.append({**t, "prof_nome": prof.get("nome", ""), "prof_email": prof.get("email", "")})
-    return out
-
 @api.put("/admin/turmas/{turma_id}/competencias")
 async def admin_update_competencias(turma_id: str, body: CompetenciasUpdate, _: dict = Depends(require_admin)):
     turma = await get_turma_any_or_404(turma_id)

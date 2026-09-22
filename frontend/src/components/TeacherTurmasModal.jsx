@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import api, { formatApiError } from "@/lib/api";
-import { X, School, ChevronLeft, Plus, Save, Upload, Sparkles } from "lucide-react";
+import { X, School, ChevronLeft, Plus, Save, Upload, Sparkles, Download, Loader2 } from "lucide-react";
 import CompetenciasImportModal from "@/components/CompetenciasImportModal";
+import { exportConfiguracoesTurmasPDF } from "@/lib/pdf";
 
 // Admin: ver as turmas de um professor e gerir as Aprendizagens Essenciais de cada uma.
 export default function TeacherTurmasModal({ teacher, onClose }) {
@@ -9,6 +10,7 @@ export default function TeacherTurmasModal({ teacher, onClose }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [turmaId, setTurmaId] = useState(null);
+    const [exportingId, setExportingId] = useState(null);
 
     useEffect(() => {
         (async () => {
@@ -27,6 +29,15 @@ export default function TeacherTurmasModal({ teacher, onClose }) {
 
     function onSavedComp(turmaIdSalva, competencias) {
         setTurmas((s) => s.map((t) => (t.id === turmaIdSalva ? { ...t, competencias } : t)));
+    }
+
+    function exportarTurma(t) {
+        setExportingId(t.id);
+        try {
+            exportConfiguracoesTurmasPDF({ turmas: [{ ...t, prof_nome: teacher.nome, prof_email: teacher.email }] });
+        } finally {
+            setExportingId(null);
+        }
     }
 
     return (
@@ -59,11 +70,11 @@ export default function TeacherTurmasModal({ teacher, onClose }) {
                     ) : (
                         <ul className="space-y-2" data-testid="teacher-turmas-list">
                             {turmas.map((t) => (
-                                <li key={t.id}>
+                                <li key={t.id} className="flex items-stretch gap-2">
                                     <button
                                         data-testid={`teacher-turma-${t.id}`}
                                         onClick={() => setTurmaId(t.id)}
-                                        className="w-full text-left flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-crisp hover:bg-page transition-colors"
+                                        className="flex-1 min-w-0 text-left flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-crisp hover:bg-page transition-colors"
                                     >
                                         <div>
                                             <div className="font-medium text-brand-charcoal">{t.disciplina}</div>
@@ -72,6 +83,15 @@ export default function TeacherTurmasModal({ teacher, onClose }) {
                                         <span className="text-[11px] text-brand-sage flex items-center gap-1 shrink-0">
                                             <Sparkles size={11} /> {(t.competencias || []).length} aprendizagem(s)
                                         </span>
+                                    </button>
+                                    <button
+                                        data-testid={`export-turma-${t.id}`}
+                                        onClick={() => exportarTurma(t)}
+                                        disabled={exportingId === t.id}
+                                        title="Exportar relatório de configurações desta turma"
+                                        className="btn-ghost !px-3 shrink-0"
+                                    >
+                                        {exportingId === t.id ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                                     </button>
                                 </li>
                             ))}

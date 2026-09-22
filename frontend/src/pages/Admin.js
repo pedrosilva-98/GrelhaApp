@@ -3,8 +3,7 @@ import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ResetPasswordModal from "@/components/ResetPasswordModal";
 import TeacherTurmasModal from "@/components/TeacherTurmasModal";
-import { exportConfiguracoesTurmasPDF } from "@/lib/pdf";
-import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, Download, Loader2, NotebookPen } from "lucide-react";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, NotebookPen } from "lucide-react";
 
 export default function Admin() {
     const { user, logout } = useAuth();
@@ -18,7 +17,6 @@ export default function Admin() {
     const [resetTarget, setResetTarget] = useState(null);
     const [togglingIa, setTogglingIa] = useState(null);
     const [turmasTarget, setTurmasTarget] = useState(null);
-    const [exportingConfig, setExportingConfig] = useState(false);
 
     async function load() {
         try {
@@ -75,19 +73,6 @@ export default function Admin() {
 
     function copy(text) { navigator.clipboard.writeText(text); }
 
-    async function exportarConfiguracoes() {
-        setExportingConfig(true);
-        setError("");
-        try {
-            const r = await api.get("/admin/turmas");
-            exportConfiguracoesTurmasPDF({ turmas: r.data });
-        } catch (e) {
-            setError(formatApiError(e));
-        } finally {
-            setExportingConfig(false);
-        }
-    }
-
     return (
         <div className="min-h-screen">
             <header className="border-b border-crisp bg-surface">
@@ -122,24 +107,13 @@ export default function Admin() {
                             Crie e faça a gestão das contas de professores. Cada docente irá criar e gerir as suas próprias turmas, disciplinas e anos após o primeiro acesso.
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <button
-                            data-testid="admin-export-config-btn"
-                            onClick={exportarConfiguracoes}
-                            disabled={exportingConfig}
-                            className="btn-ghost"
-                        >
-                            {exportingConfig ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                            Exportar relatório de configurações
-                        </button>
-                        <button
-                            data-testid="admin-add-teacher-btn"
-                            onClick={() => setShowModal(true)}
-                            className="btn-primary"
-                        >
-                            <Plus size={16} /> Novo professor
-                        </button>
-                    </div>
+                    <button
+                        data-testid="admin-add-teacher-btn"
+                        onClick={() => setShowModal(true)}
+                        className="btn-primary"
+                    >
+                        <Plus size={16} /> Novo professor
+                    </button>
                 </div>
 
                 {justCreated && (
