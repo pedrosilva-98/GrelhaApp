@@ -946,9 +946,18 @@ Regras:
 - "solucao": resolução resumida e CORRETA, destinada ao professor. Confirma os cálculos antes de responder.
 """
 
+def gemini_modelos() -> list:
+    principal = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash").strip()
+    reservas = os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-3.5-flash,gemini-3.1-flash-lite")
+    modelos = []
+    for m in [principal, *reservas.split(",")]:
+        m = m.strip()
+        if m and m not in modelos:
+            modelos.append(m)
+    return modelos
+
 def gemini_gerar(prompt: str) -> dict:
     key = os.environ.get("GEMINI_API_KEY", "")
-    modelos = [m for m in (os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"), os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")) if m]
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -959,7 +968,9 @@ def gemini_gerar(prompt: str) -> dict:
         },
     }
     ultimo = "erro desconhecido"
-    for modelo in modelos:
+    # Modelos diferentes têm capacidade separada: um 503 ("procura elevada") num modelo
+    # não impede que o seguinte responda.
+    for modelo in gemini_modelos():
         for tentativa in range(1, 3):
             try:
                 r = requests.post(
@@ -975,18 +986,17 @@ def gemini_gerar(prompt: str) -> dict:
                 ultimo = f"{r.status_code} temporário"
                 time.sleep(3 * tentativa)
                 continue
-            if r.status_code == 404:
-                ultimo = f"modelo {modelo} indisponível"
-                break
             if r.status_code != 200:
                 log.warning("Gemini %s (%s): %s", r.status_code, modelo, r.text[:300])
-                raise HTTPException(status_code=502, detail=f"O serviço de IA devolveu um erro ({r.status_code}).")
+                ultimo = f"erro {r.status_code} no modelo {modelo}"
+                break
             try:
                 partes = r.json()["candidates"][0]["content"]["parts"]
                 texto = "".join(p.get("text", "") for p in partes if not p.get("thought"))
                 return json.loads(texto)
             except (KeyError, IndexError, ValueError, TypeError):
                 ultimo = "resposta inválida"
+        log.warning("Gemini: modelo %s falhou (%s), a tentar o seguinte", modelo, ultimo)
     raise HTTPException(status_code=502, detail=f"O serviço de IA está indisponível de momento ({ultimo}). Tenta novamente daqui a pouco.")
 
 def limpar_questoes(data: dict, n: int, codes: set) -> list:
