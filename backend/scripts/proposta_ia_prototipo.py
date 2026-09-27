@@ -17,6 +17,7 @@ Variáveis: GEMINI_API_KEY (obrigatória, exceto em --dry-run), GEMINI_MODEL (po
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -62,11 +63,10 @@ SCHEMA = {
                 "properties": {
                     "ae_code": {"type": "STRING"},
                     "tipo": {"type": "STRING"},
-                    "dificuldade": {"type": "STRING"},
                     "enunciado": {"type": "STRING"},
                     "solucao": {"type": "STRING"},
                 },
-                "required": ["ae_code", "tipo", "dificuldade", "enunciado", "solucao"],
+                "required": ["ae_code", "tipo", "enunciado", "solucao"],
             },
         }
     },
@@ -74,25 +74,50 @@ SCHEMA = {
 }
 
 
+def ciclo_ensino(ano: str) -> str:
+    m = re.search(r"\d+", ano or "")
+    n = int(m.group()) if m else None
+    if n is None:
+        return ""
+    if n <= 4:
+        return "1.º ciclo do ensino básico"
+    if n <= 6:
+        return "2.º ciclo do ensino básico"
+    if n <= 9:
+        return "3.º ciclo do ensino básico"
+    if n <= 12:
+        return "ensino secundário"
+    return ""
+
+
+# Mesmo prompt que backend/server.py (prompt_proposta) — manter os dois iguais.
 def build_prompt(caso: dict, n: int) -> str:
     aes = "\n".join(f"- {a['code']}: {a['nome']} (última avaliação: {a['pct']}%)" for a in caso["aes"])
     d = caso["dominio_fraco"]
+    dom = f"- Domínio com mais dificuldade: {d['code']} - {d['nome']} ({d['pct']}%)\n" if d else ""
+    ciclo = ciclo_ensino(caso["ano"])
+    ano_limpo = re.sub(r"\s*ano\s*$", "", caso["ano"].strip(), flags=re.IGNORECASE)
+    ano_txt = f"{ano_limpo} ano" + (f" ({ciclo})" if ciclo else "")
     return f"""És um professor experiente em Portugal a preparar uma atividade de recuperação.
 
 Contexto do aluno (anónimo):
 - Disciplina: {caso['disciplina']}
-- Ano de escolaridade: {caso['ano']}
-- Domínio com mais dificuldade: {d['code']} - {d['nome']} ({d['pct']}%)
-- Aprendizagens essenciais com avaliação recente inferior a 60%:
+- Ano de escolaridade: {ano_txt}
+{dom}- Aprendizagens essenciais com avaliação recente inferior a 60%:
 {aes}
 
 Tarefa: cria exatamente {n} questões de recuperação.
 
+NÍVEL (o mais importante):
+- Todas as questões têm de ter o nível de exigência que se espera de um aluno do {ano_txt}, de acordo com as Aprendizagens Essenciais e os programas em vigor em Portugal para esse ano e disciplina.
+- "Recuperação" significa consolidar estas aprendizagens AO NÍVEL do {ano_limpo} ano. Não baixes o nível para anos anteriores nem transformes as questões em exercícios elementares ou de aplicação direta de uma fórmula.
+- Usa o vocabulário, os conteúdos e o grau de formalização próprios do {ano_limpo} ano. No ensino secundário, as questões devem aproximar-se do nível de um teste ou exame nacional dessa disciplina, com raciocínio em vários passos.
+- Antes de responder, revê cada questão: se parecer adequada a um ano inferior ao {ano_limpo} ano, torna-a mais exigente.
+
 Regras:
 - Usa APENAS as aprendizagens essenciais listadas acima; em cada questão indica o ae_code correspondente.
 - Distribui as questões pelas aprendizagens, dando mais peso às que têm pior avaliação.
-- Adequa o nível ao ano de escolaridade indicado, em português de Portugal, com linguagem clara para o aluno.
-- Começa pelas mais simples e vai aumentando a dificuldade (dificuldade: "básica", "intermédia" ou "avançada").
+- Escreve em português de Portugal, com linguagem clara para o aluno.
 - tipo: "resposta curta", "escolha múltipla" ou "problema". Numa escolha múltipla, inclui as opções A) B) C) D) no enunciado.
 - Não dependas de imagens, gráficos nem tabelas.
 - Escreve a matemática só com caracteres simples (ex.: x^2, >=, <=, raiz(9), pi, 3/4). Não uses símbolos Unicode especiais.
@@ -147,7 +172,7 @@ def mostrar(caso: dict, resultado: dict, n: int):
     codigos_validos = {a["code"] for a in caso["aes"]}
     for i, q in enumerate(qs, 1):
         aviso = "" if q["ae_code"] in codigos_validos else "  [!] AE fora da lista"
-        print(f"\n{i}. [{q['ae_code']} · {q['tipo']} · {q['dificuldade']}]{aviso}\n   {q['enunciado']}\n   Solução: {q['solucao']}")
+        print(f"\n{i}. [{q['ae_code']} · {q['tipo']}]{aviso}\n   {q['enunciado']}\n   Solução: {q['solucao']}")
     fora = caracteres_fora_do_pdf(" ".join(f"{q['enunciado']} {q['solucao']}" for q in qs))
     if fora:
         print(f"\n[!] Caracteres que o PDF atual não desenha: {' '.join(sorted(fora))}")

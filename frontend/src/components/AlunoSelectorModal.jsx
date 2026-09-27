@@ -262,7 +262,7 @@ export default function AlunoSelectorModal({
                                                             <div className="flex items-center justify-between mb-1">
                                                                 <span className="text-[11px] font-bold text-brand-forest">
                                                                     {qi + 1}. {q.ae_code && <span className="font-mono">[{q.ae_code}]</span>}
-                                                                    <span className="font-normal text-brand-sage ml-1">{[q.tipo, q.dificuldade].filter(Boolean).join(" · ")}</span>
+                                                                    <span className="font-normal text-brand-sage ml-1">{q.tipo}</span>
                                                                 </span>
                                                                 <button type="button" onClick={() => removerQuestao(a.id, qi)} className="btn-danger-ghost" title="Remover questão">
                                                                     <Trash2 size={12} />

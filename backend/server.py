@@ -9,6 +9,7 @@ import uuid
 import logging
 import html
 import json
+import re
 import time
 import bcrypt
 import jwt
@@ -867,11 +868,10 @@ IA_SCHEMA = {
                 "properties": {
                     "ae_code": {"type": "STRING"},
                     "tipo": {"type": "STRING"},
-                    "dificuldade": {"type": "STRING"},
                     "enunciado": {"type": "STRING"},
                     "solucao": {"type": "STRING"},
                 },
-                "required": ["ae_code", "tipo", "dificuldade", "enunciado", "solucao"],
+                "required": ["ae_code", "tipo", "enunciado", "solucao"],
             },
         }
     },
@@ -896,26 +896,50 @@ class PropostaIn(BaseModel):
     aes: List[AEPerfil] = Field(min_length=1, max_length=20)
     num_questoes: int = Field(ge=1, le=10)
 
+def ciclo_ensino(ano: str) -> str:
+    m = re.search(r"\d+", ano or "")
+    n = int(m.group()) if m else None
+    if n is None:
+        return ""
+    if n <= 4:
+        return "1.º ciclo do ensino básico"
+    if n <= 6:
+        return "2.º ciclo do ensino básico"
+    if n <= 9:
+        return "3.º ciclo do ensino básico"
+    if n <= 12:
+        return "ensino secundário"
+    return ""
+
 def prompt_proposta(b: PropostaIn) -> str:
     aes = chr(10).join(f"- {a.code}: {a.nome} (última avaliação: {round(a.pct)}%)" for a in b.aes)
     dom = ""
     if b.dominio_fraco:
         d = b.dominio_fraco
         dom = f"- Domínio com mais dificuldade: {d.code} - {d.nome} ({round(d.pct)}%)" + chr(10)
+    ciclo = ciclo_ensino(b.ano)
+    ano_limpo = re.sub(r"\s*ano\s*$", "", b.ano.strip(), flags=re.IGNORECASE)
+    ano_txt = f"{ano_limpo} ano" + (f" ({ciclo})" if ciclo else "")
     return f"""És um professor experiente em Portugal a preparar uma atividade de recuperação.
 
 Contexto do aluno (anónimo):
 - Disciplina: {b.disciplina}
-- Ano de escolaridade: {b.ano}
+- Ano de escolaridade: {ano_txt}
 {dom}- Aprendizagens essenciais com avaliação recente inferior a 60%:
 {aes}
 
 Tarefa: cria exatamente {b.num_questoes} questões de recuperação.
 
+NÍVEL (o mais importante):
+- Todas as questões têm de ter o nível de exigência que se espera de um aluno do {ano_txt}, de acordo com as Aprendizagens Essenciais e os programas em vigor em Portugal para esse ano e disciplina.
+- "Recuperação" significa consolidar estas aprendizagens AO NÍVEL do {ano_limpo} ano. Não baixes o nível para anos anteriores nem transformes as questões em exercícios elementares ou de aplicação direta de uma fórmula.
+- Usa o vocabulário, os conteúdos e o grau de formalização próprios do {ano_limpo} ano. No ensino secundário, as questões devem aproximar-se do nível de um teste ou exame nacional dessa disciplina, com raciocínio em vários passos.
+- Antes de responder, revê cada questão: se parecer adequada a um ano inferior ao {ano_limpo} ano, torna-a mais exigente.
+
 Regras:
 - Usa APENAS as aprendizagens essenciais listadas acima; em cada questão indica o ae_code correspondente.
 - Distribui as questões pelas aprendizagens, dando mais peso às que têm pior avaliação.
-- Adequa o nível ao ano de escolaridade indicado, em português de Portugal, com linguagem clara para o aluno.
+- Escreve em português de Portugal, com linguagem clara para o aluno.
 - tipo: "resposta curta", "escolha múltipla" ou "problema". Numa escolha múltipla, inclui as opções A) B) C) D) no enunciado.
 - Não dependas de imagens, gráficos nem tabelas.
 - Escreve a matemática só com caracteres simples (ex.: x^2, >=, <=, raiz(9), pi, 3/4). Não uses símbolos Unicode especiais.
@@ -977,7 +1001,6 @@ def limpar_questoes(data: dict, n: int, codes: set) -> list:
         out.append({
             "ae_code": code if code in codes else "",
             "tipo": str(q.get("tipo") or "").strip()[:40],
-            "dificuldade": str(q.get("dificuldade") or "").strip()[:20],
             "enunciado": enunciado,
             "solucao": str(q.get("solucao") or "").strip()[:2000],
         })
