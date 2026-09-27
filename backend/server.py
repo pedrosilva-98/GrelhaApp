@@ -916,7 +916,6 @@ Regras:
 - Usa APENAS as aprendizagens essenciais listadas acima; em cada questão indica o ae_code correspondente.
 - Distribui as questões pelas aprendizagens, dando mais peso às que têm pior avaliação.
 - Adequa o nível ao ano de escolaridade indicado, em português de Portugal, com linguagem clara para o aluno.
-- Começa pelas mais simples e vai aumentando a dificuldade (dificuldade: "básica", "intermédia" ou "avançada").
 - tipo: "resposta curta", "escolha múltipla" ou "problema". Numa escolha múltipla, inclui as opções A) B) C) D) no enunciado.
 - Não dependas de imagens, gráficos nem tabelas.
 - Escreve a matemática só com caracteres simples (ex.: x^2, >=, <=, raiz(9), pi, 3/4). Não uses símbolos Unicode especiais.
