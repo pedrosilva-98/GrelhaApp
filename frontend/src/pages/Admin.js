@@ -3,10 +3,10 @@ import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ResetPasswordModal from "@/components/ResetPasswordModal";
 import TeacherTurmasModal from "@/components/TeacherTurmasModal";
-import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, NotebookPen } from "lucide-react";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, NotebookPen, LogIn, Loader2 } from "lucide-react";
 
 export default function Admin() {
-    const { user, logout } = useAuth();
+    const { user, logout, entrarComo } = useAuth();
     const [teachers, setTeachers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -17,6 +17,18 @@ export default function Admin() {
     const [resetTarget, setResetTarget] = useState(null);
     const [togglingIa, setTogglingIa] = useState(null);
     const [turmasTarget, setTurmasTarget] = useState(null);
+    const [entrandoId, setEntrandoId] = useState(null);
+
+    async function entrar(t) {
+        setError("");
+        setEntrandoId(t.id);
+        try {
+            await entrarComo(t.id);
+        } catch (e) {
+            setError(formatApiError(e));
+            setEntrandoId(null);
+        }
+    }
 
     async function load() {
         try {
@@ -187,6 +199,15 @@ export default function Admin() {
                                                 title="Turmas e Aprendizagens Essenciais"
                                             >
                                                 <School size={14} />
+                                            </button>
+                                            <button
+                                                data-testid={`entrar-teacher-${t.id}`}
+                                                onClick={() => entrar(t)}
+                                                disabled={entrandoId != null}
+                                                className="btn-ghost !px-2 !py-1.5"
+                                                title="Entrar na conta do professor"
+                                            >
+                                                {entrandoId === t.id ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
                                             </button>
                                             <button
                                                 data-testid={`reset-teacher-${t.id}`}

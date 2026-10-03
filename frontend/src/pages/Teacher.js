@@ -9,6 +9,7 @@ import Config from "@/pages/sections/Config";
 import TurmaFormModal from "@/components/TurmaFormModal";
 import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
+import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
 import { calcPerfilRecuperacao } from "@/lib/grelha";
 import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
@@ -208,6 +209,7 @@ export default function Teacher() {
     if (!loadingTurmas && turmas.length === 0) {
         return (
             <div className="min-h-screen">
+                <ImpersonationBanner />
                 <SimpleHeader user={user} onLogout={logout} />
                 <TurmasEmpty onCreate={() => setShowTurmaModal(true)} />
                 {showTurmaModal && (
@@ -219,6 +221,7 @@ export default function Teacher() {
 
     return (
         <div className="min-h-screen">
+            <ImpersonationBanner />
             <header className="bg-surface border-b border-crisp">
                 <div className="max-w-6xl mx-auto px-6 sm:px-10 pt-5 pb-4">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -323,13 +326,15 @@ export default function Teacher() {
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                                         <div className="absolute right-0 top-full mt-1 z-50 card-surface shadow-lg min-w-[220px] overflow-hidden" data-testid="user-menu">
-                                            <button
-                                                data-testid="menu-change-pw"
-                                                onClick={() => { setUserMenuOpen(false); setShowChangePw(true); }}
-                                                className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
-                                            >
-                                                <KeyRound size={14} /> Alterar palavra-passe
-                                            </button>
+                                            {!user?.impersonated_by && (
+                                                <button
+                                                    data-testid="menu-change-pw"
+                                                    onClick={() => { setUserMenuOpen(false); setShowChangePw(true); }}
+                                                    className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                                >
+                                                    <KeyRound size={14} /> Alterar palavra-passe
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => { setUserMenuOpen(false); logout(); }}
                                                 className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"

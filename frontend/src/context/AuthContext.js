@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import api, { setToken, getToken } from "@/lib/api";
+import api, { setToken, getToken, getAdminToken, setAdminToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -32,12 +32,30 @@ export function AuthProvider({ children }) {
 
     function logout() {
         setToken(null);
+        setAdminToken(null);
         setUser(false);
         window.location.href = "/login";
     }
 
+    // Admin: entrar diretamente na conta de um professor.
+    async function entrarComo(teacherId) {
+        const { data } = await api.post(`/admin/teachers/${teacherId}/entrar`);
+        setAdminToken(getToken());
+        setToken(data.access_token);
+        window.location.href = "/app";
+    }
+
+    // Sair da conta do professor e regressar à página do admin.
+    function voltarAoAdmin() {
+        const adminToken = getAdminToken();
+        setAdminToken(null);
+        if (!adminToken) return logout();
+        setToken(adminToken);
+        window.location.href = "/admin";
+    }
+
     return (
-        <AuthContext.Provider value={{ user, setUser, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, setUser, loading, login, logout, entrarComo, voltarAoAdmin }}>
             {children}
         </AuthContext.Provider>
     );

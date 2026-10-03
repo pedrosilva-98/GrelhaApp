@@ -32,6 +32,7 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGO = "HS256"
 ACCESS_MIN = 60 * 24 * 7
+IMP_MIN = 60 * 8  # sessão do admin dentro da conta de um professor
 
 DEFAULT_DOMINIOS = [
     {"code": "CP", "nome": "Conceitos e Procedimentos", "peso": 50},
@@ -65,12 +66,14 @@ def verify_password(pw: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def create_token(user_id: str, email: str, role: str) -> str:
+def create_token(user_id: str, email: str, role: str, imp: Optional[str] = None) -> str:
     payload = {
         "sub": user_id, "email": email, "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_MIN),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=IMP_MIN if imp else ACCESS_MIN),
         "type": "access",
     }
+    if imp:
+        payload["imp"] = imp  # id do admin que entrou na conta do professor
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
 async def get_current_user(request: Request) -> dict:
@@ -91,6 +94,11 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilizador não encontrado")
+    if payload.get("imp"):
+        admin = await db.users.find_one({"id": payload["imp"], "role": "admin"}, {"_id": 0, "id": 1, "nome": 1})
+        if not admin:
+            raise HTTPException(status_code=401, detail="Sessão inválida")
+        user["impersonated_by"] = {"id": admin["id"], "nome": admin.get("nome") or "Administrador"}
     return user
 
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
@@ -289,6 +297,8 @@ async def logout(user: dict = Depends(get_current_user)):
 
 @api.post("/auth/change-password")
 async def change_password(body: PasswordChange, user: dict = Depends(get_current_user)):
+    if user.get("impersonated_by"):
+        raise HTTPException(status_code=403, detail="Não é possível alterar a palavra-passe ao entrar como administrador")
     if len(body.new_password) < 4:
         raise HTTPException(status_code=400, detail="A nova palavra-passe deve ter pelo menos 4 caracteres")
     full = await db.users.find_one({"id": user["id"]})
@@ -357,6 +367,17 @@ async def set_teacher_ia(teacher_id: str, body: IAAtivaUpdate, _: dict = Depends
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Professor não encontrado")
     return {"ia_ativa": body.ia_ativa}
+
+@api.post("/admin/teachers/{teacher_id}/entrar")
+async def admin_entrar_como(teacher_id: str, admin: dict = Depends(require_admin)):
+    """O admin entra diretamente na conta do professor (sem a palavra-passe dele)."""
+    t = await db.users.find_one({"id": teacher_id, "role": "teacher"}, {"_id": 0, "password_hash": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    token = create_token(t["id"], t["email"], "teacher", imp=admin["id"])
+    log.info(f"Admin {admin.get('email')} entrou na conta de {t.get('email')}")
+    t["impersonated_by"] = {"id": admin["id"], "nome": admin.get("nome") or "Administrador"}
+    return {"access_token": token, "token_type": "bearer", "user": t}
 
 # ─── Turmas ───────────────────────────────────────────────────────────────────
 

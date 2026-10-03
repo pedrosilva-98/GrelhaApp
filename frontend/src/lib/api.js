@@ -13,6 +13,16 @@ export function setToken(t) {
     else localStorage.removeItem(TOKEN_KEY);
 }
 
+// Token do admin guardado enquanto este está dentro da conta de um professor.
+const ADMIN_TOKEN_KEY = "grelha_admin_token";
+export function getAdminToken() {
+    return localStorage.getItem(ADMIN_TOKEN_KEY);
+}
+export function setAdminToken(t) {
+    if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
 const api = axios.create({ baseURL: API });
 
 api.interceptors.request.use((config) => {
@@ -26,6 +36,7 @@ api.interceptors.response.use(
     (err) => {
         if (err?.response?.status === 401) {
             setToken(null);
+            setAdminToken(null);
             if (!window.location.pathname.includes("/login")) {
                 window.location.href = "/login";
             }
