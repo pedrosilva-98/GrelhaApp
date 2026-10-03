@@ -23,6 +23,9 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
     const taxaSucesso = comMedia.length ? comMedia.filter((a) => a.media >= 50).length / comMedia.length : null;
     const taxaSucessoPct = taxaSucesso != null ? Math.round(taxaSucesso * 100) : null;
 
+    // 10º-12º: média real na escala 0-20 (às centésimas) e nível = esse valor arredondado às unidades.
+    const media20 = (pct) => (pct == null ? null : Math.round((pct / 100) * 20 * 100) / 100);
+
     const meta = turma?.meta_sucesso != null ? Number(turma.meta_sucesso) : null;
 
     const dist = [5, 4, 3, 2, 1].map((n) => ({
@@ -104,12 +107,12 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                                     <th key={d.code} className="px-4 py-2.5 font-semibold tabular-nums" style={{ color: domColor(i) }}>{d.code}</th>
                                 ))}
                                 <th className="px-4 py-2.5 font-semibold">Média</th>
-                                {!escala20 && <th className="px-4 py-2.5 font-semibold">Nível</th>}
+                                <th className="px-4 py-2.5 font-semibold">Nível</th>
                             </tr>
                         </thead>
                         <tbody>
                             {medias.length === 0 && (
-                                <tr><td colSpan={dominios.length + (escala20 ? 2 : 3)} className="px-5 py-10 text-center text-brand-sage">Sem alunos ainda.</td></tr>
+                                <tr><td colSpan={dominios.length + 3} className="px-5 py-10 text-center text-brand-sage">Sem alunos ainda.</td></tr>
                             )}
                             {medias.map((a, i) => (
                                 <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
@@ -120,9 +123,21 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                                         </td>
                                     ))}
                                     <td className="px-4 py-3 tabular-nums font-serif text-brand-forest text-base">
-                                        {formatAvaliacao(a.media, turma)}
+                                        {escala20
+                                            ? (a.media != null ? media20(a.media).toFixed(2).replace(".", ",") : "—")
+                                            : formatAvaliacao(a.media, turma)}
                                     </td>
-                                    {!escala20 && <td className="px-4 py-3"><Badge v={a.media} /></td>}
+                                    <td className="px-4 py-3">
+                                        {escala20 ? (
+                                            a.media != null ? (
+                                                <span data-testid={`nivel20-${a.id}`} className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-medium font-mono min-w-[26px] border border-crisp bg-page text-brand-forest">
+                                                    {Math.round(media20(a.media))}
+                                                </span>
+                                            ) : <span className="text-brand-sage text-xs">—</span>
+                                        ) : (
+                                            <Badge v={a.media} mode="number" />
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -141,7 +156,7 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                                 <div className="w-full h-1.5 bg-crisp/60 rounded-full overflow-hidden mb-3">
                                     <div className="h-full bg-brand-forest rounded-full transition-all duration-500" style={{ width: `${(d.count / maxCount) * 100}%` }} />
                                 </div>
-                                <Badge level={d.n} />
+                                <Badge level={d.n} mode="number" />
                             </div>
                         ))}
                     </div>
