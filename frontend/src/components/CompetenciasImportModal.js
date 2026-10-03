@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import { X, Upload, Plus, Save, Check } from "lucide-react";
 
@@ -9,16 +10,19 @@ function parseTable(text) {
     if (!lines.length) return [];
     const delim = lines[0].includes(";") ? ";" : lines[0].includes("\t") ? "\t" : ",";
     let rows = lines.map((l) => l.split(delim).map((c) => c.trim().replace(/^"|"$/g, "")));
-    let codeIdx = -1, nomeIdx = -1;
-    const header = rows[0].map((h) => h.toLowerCase());
-    codeIdx = header.findIndex((h) => ["codigo", "código", "code", "cod"].includes(h));
-    nomeIdx = header.findIndex((h) => ["nome", "descricao", "descrição", "descritor", "competencia", "aprendizagem", "name"].includes(h));
-    if (codeIdx >= 0 || nomeIdx >= 0) rows = rows.slice(1);
+    // Cabeçalho: células curtas como "Código", "AE", "Aprendizagem essencial — redação oficial", "Coluna1"...
+    const header = rows[0].map((h) => h.toLowerCase().trim());
+    const isCodeH = (h) => ["codigo", "código", "code", "cod", "cód", "ae"].includes(h);
+    const isNomeH = (h) => h.length <= 60 && /^(nome|name|descri|compet|aprendiza)/.test(h);
+    const isGenericH = (h) => /^coluna\s*\d+$/.test(h) || /^column\s*\d+$/.test(h);
+    const codeIdx = header.findIndex(isCodeH);
+    const nomeIdx = header.findIndex(isNomeH);
+    if (codeIdx >= 0 || nomeIdx >= 0 || header.some(isGenericH)) rows = rows.slice(1);
     // Fallback: 1 col → nome only; 2 cols → code, nome; more → try to detect
     return rows
         .map((r) => {
             if (r.length === 1) return { code: "", nome: r[0] };
-            const code = codeIdx >= 0 ? r[codeIdx] : r[0];
+            const code = codeIdx >= 0 ? r[codeIdx] : nomeIdx >= 0 ? "" : r[0];
             const nome = nomeIdx >= 0 ? r[nomeIdx] : (r.length > 1 ? r.slice(1).join(" ") : r[0]);
             return { code: (code || "").trim(), nome: (nome || "").trim() };
         })
@@ -103,10 +107,11 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
         }
     }
 
-    return (
+    // Portal para o body: dentro de outro modal (ex.: admin → Turmas) o "fixed" ficava preso a esse modal.
+    return createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-            <div className="card-surface w-full max-w-2xl p-8 anim-in max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-start justify-between mb-6">
+            <div className="card-surface w-full max-w-2xl anim-in max-h-[92vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between px-8 pt-8 pb-4 shrink-0">
                     <div>
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
                             <Upload size={12} /> Importar
@@ -118,6 +123,7 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
                     </button>
                 </div>
 
+                <div className="flex-1 min-h-0 overflow-y-auto px-8">
                 <p className="text-sm text-brand-charcoal/70 mb-4 leading-relaxed">
                     Cole a lista (uma aprendizagem por linha) ou selecione um ficheiro <span className="font-mono text-xs">.xlsx</span> / <span className="font-mono text-xs">.csv</span> / <span className="font-mono text-xs">.txt</span>.
                     Se tiver duas colunas, deteta-se automaticamente <strong>Código</strong> e <strong>Nome</strong> (ou use apenas o descritor por linha e o código será gerado).
@@ -170,8 +176,9 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
                         <Check size={14} /> Importadas {done} aprendizagem(s).
                     </div>
                 )}
+                </div>
 
-                <div className="flex gap-3 pt-5">
+                <div className="flex gap-3 px-8 pt-4 pb-8 shrink-0 border-t border-crisp">
                     <button onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
                     <button
                         data-testid="comp-import-submit"
@@ -184,6 +191,7 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
