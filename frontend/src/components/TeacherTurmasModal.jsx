@@ -149,7 +149,11 @@ function AprendizagensEditor({ turma, onBack, onSaved }) {
         } finally { setBusy(false); }
     }
 
-    async function handleImport(newComps) {
+    async function handleImport(newComps, { replace } = {}) {
+        if (replace) {
+            setItems(await persist(newComps));
+            return;
+        }
         const merged = [...items];
         const codes = new Set(items.map((c) => c.code));
         for (const c of newComps) {

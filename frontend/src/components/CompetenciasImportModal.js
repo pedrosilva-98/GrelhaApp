@@ -3,30 +3,77 @@ import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import { X, Upload, Plus, Save, Check } from "lucide-react";
 
-// Parse CSV/TSV or plain text: one aprendizagem per row.
-// Detects "code" and "nome" columns by header names.
-function parseTable(text) {
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (!lines.length) return [];
-    const delim = lines[0].includes(";") ? ";" : lines[0].includes("\t") ? "\t" : ",";
-    let rows = lines.map((l) => l.split(delim).map((c) => c.trim().replace(/^"|"$/g, "")));
-    // Cabeçalho: células curtas como "Código", "AE", "Aprendizagem essencial — redação oficial", "Coluna1"...
-    const header = rows[0].map((h) => h.toLowerCase().trim());
+// Divide texto CSV/TSV em linhas e células, respeitando aspas
+// (vírgulas e quebras de linha dentro de "..." fazem parte da célula).
+function splitDelimited(text, delim) {
+    const rows = [];
+    let row = [], cell = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inQuotes) {
+            if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+            else if (ch === '"') inQuotes = false;
+            else cell += ch;
+        } else if (ch === '"' && cell.trim() === "") { cell = ""; inQuotes = true; }
+        else if (ch === delim) { row.push(cell); cell = ""; }
+        else if (ch === "\n" || ch === "\r") {
+            if (ch === "\r" && text[i + 1] === "\n") i++;
+            row.push(cell); rows.push(row); row = []; cell = "";
+        } else cell += ch;
+    }
+    row.push(cell); rows.push(row);
+    return rows;
+}
+
+// Código curto tipo "AE1", "AE 12", "3", "1.2", "D1a".
+const looksLikeCode = (s) => /^[A-Za-zÀ-ÿ]{0,6}[\s._-]?\d+([.-]\d+)*[a-z]?$/.test(s);
+// Tira marcadores de lista no início ("- ", "• ", "– ", "1) ").
+const cleanNome = (s) => s.replace(/\s+/g, " ").replace(/^\s*([-–—•·*]+|\d+[.)])\s+/, "").trim();
+
+// Recebe linhas de células (do Excel ou do texto) e devolve [{code, nome}].
+// Deteta cabeçalhos ("Código", "Nome", "Aprendizagem essencial…", "Coluna1"...) e ignora linhas/colunas vazias.
+// joinWith: como voltar a juntar uma descrição que foi partida pelo separador (no texto, o próprio separador,
+// para não estragar "0,1; 0,01"); as células não são aparadas antes de juntar.
+function parseRows(rawRows, joinWith = " ") {
+    const has = (c) => c.trim() !== "";
+    let rows = rawRows
+        .map((r) => r.map((c) => String(c ?? "")))
+        .filter((r) => r.some(has));
+    if (!rows.length) return [];
+    const nCols = Math.max(...rows.map((r) => r.length));
+    const usedCols = [...Array(nCols).keys()].filter((j) => rows.some((r) => has(r[j] || "")));
+    rows = rows.map((r) => usedCols.map((j) => r[j] || ""));
+
+    const header = rows[0].map((h) => h.trim().toLowerCase());
     const isCodeH = (h) => ["codigo", "código", "code", "cod", "cód", "ae"].includes(h);
     const isNomeH = (h) => h.length <= 60 && /^(nome|name|descri|compet|aprendiza)/.test(h);
-    const isGenericH = (h) => /^coluna\s*\d+$/.test(h) || /^column\s*\d+$/.test(h);
+    const isGenericH = (h) => /^(coluna|column)\s*\d+$/.test(h);
     const codeIdx = header.findIndex(isCodeH);
     const nomeIdx = header.findIndex(isNomeH);
     if (codeIdx >= 0 || nomeIdx >= 0 || header.some(isGenericH)) rows = rows.slice(1);
-    // Fallback: 1 col → nome only; 2 cols → code, nome; more → try to detect
+
     return rows
         .map((r) => {
-            if (r.length === 1) return { code: "", nome: r[0] };
-            const code = codeIdx >= 0 ? r[codeIdx] : nomeIdx >= 0 ? "" : r[0];
-            const nome = nomeIdx >= 0 ? r[nomeIdx] : (r.length > 1 ? r.slice(1).join(" ") : r[0]);
-            return { code: (code || "").trim(), nome: (nome || "").trim() };
+            const cells = r.filter(has);
+            if (codeIdx >= 0 || nomeIdx >= 0) {
+                const code = codeIdx >= 0 ? r[codeIdx].trim() : "";
+                const nome = nomeIdx >= 0 ? r[nomeIdx] : r.filter((c, j) => j !== codeIdx && has(c)).join(joinWith);
+                return { code, nome: cleanNome(nome) };
+            }
+            // Sem cabeçalho: a 1.ª célula só é código se parecer um código; o resto é a descrição.
+            if (cells.length > 1 && looksLikeCode(cells[0].trim())) {
+                return { code: cells[0].trim(), nome: cleanNome(cells.slice(1).join(joinWith)) };
+            }
+            return { code: "", nome: cleanNome(cells.join(joinWith)) };
         })
         .filter((c) => c.nome);
+}
+
+// Texto colado ou ficheiro .csv/.txt: uma aprendizagem por linha.
+function parseTable(text) {
+    const first = text.split(/\r?\n/).find((l) => l.trim()) || "";
+    const delim = text.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
+    return parseRows(splitDelimited(text, delim), delim === "\t" ? " " : delim);
 }
 
 // Read xlsx file and return array of {code, nome}
@@ -35,12 +82,7 @@ async function parseXlsx(file) {
     const wb = XLSX.read(buf, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (!sheet) return [];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    // Rebuild as CSV-ish text so we reuse parseTable header detection
-    const asCsv = rows
-        .map((r) => r.map((c) => String(c ?? "").replace(/"/g, '""')).map((c) => `"${c}"`).join(","))
-        .join("\n");
-    return parseTable(asCsv);
+    return parseRows(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }));
 }
 
 export default function AprendizagemsImportModal({ onClose, onImport, existing }) {
@@ -49,7 +91,9 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
     const [done, setDone] = useState(null);
+    const [replace, setReplace] = useState(false);
     const fileRef = useRef(null);
+    const nExisting = (existing || []).length;
 
     function refreshPreview(txt) {
         try {
@@ -69,7 +113,7 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
             if (isXlsx) {
                 const parsed = await parseXlsx(f);
                 setItems(parsed);
-                setText(parsed.map((c) => (c.code ? `${c.code},${c.nome}` : c.nome)).join("\n"));
+                setText(parsed.map((c) => (c.code ? `${c.code}\t${c.nome}` : c.nome)).join("\n"));
             } else {
                 const t = await f.text();
                 setText(t);
@@ -83,7 +127,7 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
     async function submit() {
         if (!items.length) { setError("Nenhuma aprendizagem detetada."); return; }
         // Assign automatic codes if missing
-        const existingCodes = new Set((existing || []).map((c) => c.code));
+        const existingCodes = new Set(replace ? [] : (existing || []).map((c) => c.code));
         let n = 1;
         const withCodes = items.map((c) => {
             let code = (c.code || "").trim().toUpperCase();
@@ -97,7 +141,7 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
         });
         setBusy(true);
         try {
-            await onImport(withCodes);
+            await onImport(withCodes, { replace });
             setDone(withCodes.length);
             setTimeout(onClose, 1200);
         } catch (e) {
@@ -168,6 +212,16 @@ export default function AprendizagemsImportModal({ onClose, onImport, existing }
                             {items.length > 20 && <li className="text-brand-sage">... e mais {items.length - 20}</li>}
                         </ol>
                     </div>
+                )}
+
+                {nExisting > 0 && (
+                    <label className="mt-3 flex items-start gap-2 text-sm text-brand-charcoal cursor-pointer" data-testid="comp-replace">
+                        <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} className="mt-1 accent-brand-forest" />
+                        <span>
+                            Substituir as {nExisting} aprendizagem(s) atuais
+                            <span className="block text-xs text-brand-sage">Sem esta opção, as novas são acrescentadas às que já existem.</span>
+                        </span>
+                    </label>
                 )}
 
                 {error && <div className="mt-3 text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
