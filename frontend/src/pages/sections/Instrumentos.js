@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save } from "lucide-react";
-import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry } from "@/lib/grelha";
+import { createPortal } from "react-dom";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered } from "lucide-react";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -41,6 +42,7 @@ export default function Instrumentos({
     const [error, setError] = useState("");
     const [busy, setBusy] = useState(false);
     const [odClassifying, setOdClassifying] = useState(null); // { parametro, sem }
+    const [rankingInst, setRankingInst] = useState(null);
 
     function openNew() { setForm(buildInitial(dominios)); setEditing("new"); setError(""); }
     function openEdit(inst) { setForm(fromInst(inst)); setEditing(inst.id); setError(""); }
@@ -274,6 +276,9 @@ export default function Instrumentos({
                                         <button data-testid={`relatorio-inst-${inst.id}`} onClick={() => onExportRelatorio && onExportRelatorio(inst)} className="btn-ghost !px-2 !py-1.5" title="Exportar relatório por aprendizagens (PDF)">
                                             <FileText size={14} />
                                         </button>
+                                        <button data-testid={`ranking-inst-${inst.id}`} onClick={() => setRankingInst(inst)} className="btn-ghost !px-2 !py-1.5" title="Ranking de aprendizagens essenciais (da pior para a melhor)">
+                                            <ListOrdered size={14} />
+                                        </button>
                                         <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
                                             <Pencil size={14} />
                                         </button>
@@ -349,6 +354,15 @@ export default function Instrumentos({
                     onSave={async (payload) => {
                         await saveODAvaliacao(odClassifying.parametro.id, { ...payload, semestre: odClassifying.sem });
                     }}
+                />
+            )}
+
+            {rankingInst && (
+                <RankingAEModal
+                    inst={insts.find((x) => x.id === rankingInst.id) || rankingInst}
+                    alunos={alunos}
+                    competencias={competencias}
+                    onClose={() => setRankingInst(null)}
                 />
             )}
         </div>
@@ -464,5 +478,76 @@ function ODClassifModal({ parametro, semestre, entry, fallbackDom, dominios, alu
                 </div>
             </div>
         </div>
+    );
+}
+
+// ─── Ranking das aprendizagens essenciais de um instrumento (pior → melhor) ──
+function RankingAEModal({ inst, alunos, competencias, onClose }) {
+    const { ranking, semNotas } = useMemo(
+        () => rankingAprendizagens(inst, alunos, competencias),
+        [inst, alunos, competencias]
+    );
+    const corBarra = (v) => (v < 50 ? "#C0573E" : v < 70 ? "#D49A3A" : "#2F5D50");
+
+    return createPortal(
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="card-surface w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden anim-in" onClick={(e) => e.stopPropagation()} data-testid="ranking-ae-modal">
+                <div className="p-6 border-b border-crisp">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
+                                <ListOrdered size={12} /> {inst.nome}
+                            </div>
+                            <h2 className="font-serif text-xl text-brand-forest">Ranking de aprendizagens essenciais</h2>
+                            <p className="text-xs text-brand-charcoal/60 mt-1">Média de todos os alunos em cada aprendizagem, da mais baixa para a mais alta.</p>
+                        </div>
+                        <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
+                            <X size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-5">
+                    {ranking.length === 0 ? (
+                        <div className="text-center text-brand-sage py-10 text-sm">
+                            {semNotas.length
+                                ? "Ainda não há classificações nas questões com aprendizagens associadas."
+                                : "Nenhuma questão deste instrumento tem uma aprendizagem essencial associada."}
+                        </div>
+                    ) : (
+                        <ol className="space-y-3" data-testid="ranking-ae-list">
+                            {ranking.map((r, i) => (
+                                <li key={r.code} className="flex items-start gap-3" data-testid={`ranking-ae-${r.code}`}>
+                                    <span className="font-serif text-lg text-brand-forest w-7 text-right tabular-nums shrink-0">{i + 1}.</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="text-sm text-brand-charcoal leading-snug">
+                                                <span className="font-mono text-xs text-brand-sage mr-1.5">{r.code}</span>
+                                                {r.nome}
+                                            </div>
+                                            <span className="font-serif text-base tabular-nums shrink-0" style={{ color: corBarra(r.media) }}>
+                                                {r.media.toFixed(1).replace(".", ",")}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-crisp/60 rounded-full overflow-hidden mt-1.5">
+                                            <div className="h-full rounded-full" style={{ width: `${Math.max(2, r.media)}%`, background: corBarra(r.media) }} />
+                                        </div>
+                                        <div className="text-[11px] text-brand-sage mt-1">
+                                            {r.questoes} questão(ões) · {r.nAlunos} aluno(s) classificado(s)
+                                        </div>
+                                    </div>
+                                </li>
+                            ))}
+                        </ol>
+                    )}
+                    {ranking.length > 0 && semNotas.length > 0 && (
+                        <div className="mt-5 text-xs text-brand-sage border-t border-crisp pt-3">
+                            Sem classificações ainda: {semNotas.map((s) => s.code).join(", ")}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 }

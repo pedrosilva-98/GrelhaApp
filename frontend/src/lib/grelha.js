@@ -198,6 +198,23 @@ export function pctAprendizagem(instrumento, compCode, alunoId) {
     return (weighted / totCot) * 100;
 }
 
+// Ranking das aprendizagens essenciais de UM instrumento pela média da turma
+// (média das % de todos os alunos com notas). Pior primeiro, melhor no fim.
+export function rankingAprendizagens(instrumento, alunos, competencias) {
+    const codes = [...new Set((instrumento.questoes || []).map((q) => q.comp).filter(Boolean))];
+    const nomeDe = Object.fromEntries((competencias || []).map((c) => [c.code, c.nome]));
+    const ranking = [];
+    const semNotas = [];
+    for (const code of codes) {
+        const pcts = alunos.map((a) => pctAprendizagem(instrumento, code, a.id)).filter((v) => v != null);
+        const item = { code, nome: nomeDe[code] || code, questoes: instrumento.questoes.filter((q) => q.comp === code).length };
+        if (!pcts.length) { semNotas.push(item); continue; }
+        ranking.push({ ...item, media: pcts.reduce((s, v) => s + v, 0) / pcts.length, nAlunos: pcts.length });
+    }
+    ranking.sort((a, b) => a.media - b.media);
+    return { ranking, semNotas };
+}
+
 function dataInstrumento(inst) {
     return `${inst.data || (inst.created_at || "").slice(0, 10)}|${inst.created_at || ""}`;
 }
