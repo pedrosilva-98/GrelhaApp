@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered } from "lucide-react";
-import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens } from "@/lib/grelha";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -77,6 +77,11 @@ export default function Instrumentos({
         if (!qs.length) { setError("Adicione pelo menos uma questão preenchida."); return; }
         const ids = qs.map((q) => q.id);
         if (new Set(ids).size !== ids.length) { setError("Os identificadores de questão têm de ser únicos."); return; }
+        const erradas = Object.entries(somaCotacoesPorDominio(qs)).filter(([, v]) => Math.abs(v - alvo) > 0.01);
+        if (erradas.length) {
+            setError(`As questões de cada domínio têm de somar ${alvo} pontos. Verifique: ${erradas.map(([d, v]) => `${d} (${fmtPts(v)})`).join(", ")}.`);
+            return;
+        }
         setBusy(true);
         try {
             const payload = {
@@ -96,6 +101,14 @@ export default function Instrumentos({
 
     const totalCot = form.questoes.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0);
     const domByCode = Object.fromEntries(dominios.map((d, i) => [d.code, { ...d, color: domColor(i) }]));
+    // Cada domínio avaliado no instrumento soma 100 pontos (20 no 10º-12º ano).
+    const alvo = cotacaoAlvo(turma);
+    const somasDom = somaCotacoesPorDominio(form.questoes.filter((q) => q.cotacao !== ""));
+    const domsAvaliados = dominios.filter((d) => somasDom[d.code] != null);
+
+    function fmtPts(v) {
+        return (Math.round(v * 100) / 100).toString().replace(".", ",");
+    }
 
     function fmtDate(iso) {
         if (!iso) return "—";
@@ -174,9 +187,32 @@ export default function Instrumentos({
                     )}
 
                     <div>
-                        <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-3">
-                            Questões · Total: <span className="text-brand-forest">{totalCot.toFixed(1)} pts</span>
+                        <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-1">
+                            Questões · Total: <span className="text-brand-forest">{fmtPts(totalCot)} pts</span>
+                            {domsAvaliados.length > 0 && (
+                                <span className="normal-case tracking-normal font-normal"> ({domsAvaliados.length} domínio(s) × {alvo})</span>
+                            )}
                         </div>
+                        <p className="text-xs text-brand-charcoal/60 mb-3">
+                            As questões de cada domínio avaliado têm de somar {alvo} pontos.
+                        </p>
+                        {domsAvaliados.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-4" data-testid="somas-dominio">
+                                {domsAvaliados.map((d) => {
+                                    const v = somasDom[d.code];
+                                    const ok = Math.abs(v - alvo) <= 0.01;
+                                    return (
+                                        <span
+                                            key={d.code}
+                                            data-testid={`soma-dom-${d.code}`}
+                                            className={`text-xs font-mono px-2.5 py-1 rounded-full border ${ok ? "bg-[#E6F3E6] text-[#2E6B2E] border-[#B3D9B3]" : "bg-[#FDF0ED] text-[#9E3921] border-[#F5C2B8]"}`}
+                                        >
+                                            {d.code}: {fmtPts(v)} / {alvo} {ok ? "✓" : v < alvo ? `(faltam ${fmtPts(alvo - v)})` : `(excede ${fmtPts(v - alvo)})`}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
                         <div className="space-y-4">
                             {form.questoes.map((q, i) => {
                                 const empty = !q.id.trim() && !q.cotacao;

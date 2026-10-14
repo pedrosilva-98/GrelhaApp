@@ -160,7 +160,7 @@ class TestRegression:
         c = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma_a['id']}",
                           headers=ha, json={
                               "nome": "Ficha 1", "tipo": "Ficha", "data": "",
-                              "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+                              "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
                           })
         assert c.status_code == 200
         inst = c.json()

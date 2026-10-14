@@ -175,6 +175,21 @@ export function isEscala20(turma) {
     return n != null && n >= 10 && n <= 12;
 }
 
+// Pontos que cada domínio avaliado num instrumento tem de somar (igual ao backend).
+export function cotacaoAlvo(turma) {
+    return isEscala20(turma) ? 20 : 100;
+}
+
+// Soma das cotações por domínio: { CP: 100, RRP: 60, ... } (só domínios com questões).
+export function somaCotacoesPorDominio(questoes) {
+    const out = {};
+    for (const q of questoes || []) {
+        if (!q.dom) continue;
+        out[q.dom] = (out[q.dom] || 0) + (parseFloat(q.cotacao) || 0);
+    }
+    return out;
+}
+
 // Formata uma percentagem (0-100) na escala apropriada à turma:
 // 0-20 (arredondado) para 10º-12º ano, percentagem nos restantes.
 export function formatAvaliacao(pct, turma) {

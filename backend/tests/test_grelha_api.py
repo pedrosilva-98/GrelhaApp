@@ -178,7 +178,7 @@ class TestScoped:
         # instrumento
         ri = requests.post(f"{API}/instrumentos", headers=_hdr(a["token"]), params={"turma_id": tid},
                            json={"nome": "TEST_Inst", "tipo": "F.Sumativa", "data": "",
-                                 "questoes": [{"id": "q1", "dom": "CP", "cotacao": 20}]})
+                                 "questoes": [{"id": "q1", "dom": "CP", "cotacao": 100}]})
         assert ri.status_code == 200
         iid = ri.json()["id"]
         # update notas

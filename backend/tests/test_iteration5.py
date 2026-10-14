@@ -138,7 +138,7 @@ class TestDuplicateTurma:
                       params={"turma_id": turma["id"]}, headers=_auth(teacher_a["token"]))
         requests.post(f"{API}/instrumentos",
                       json={"nome": "T1", "tipo": "teste", "data": "",
-                            "questoes": [{"id": "q1", "dom": "X", "cotacao": 10}]},
+                            "questoes": [{"id": "q1", "dom": "X", "cotacao": 100}]},
                       params={"turma_id": turma["id"]}, headers=_auth(teacher_a["token"]))
 
         # duplicate

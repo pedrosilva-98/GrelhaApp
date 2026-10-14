@@ -738,6 +738,68 @@ def _validate_observacao_direta(turma: dict, ods: Optional[List[ObservacaoNota]]
             raise HTTPException(status_code=400, detail="Nota da observação direta deve estar entre 0 e 10")
 
 
+def cotacao_alvo(turma: dict) -> int:
+    """Pontos que cada domínio avaliado num instrumento tem de somar: 20 no 10º-12º ano, 100 nos restantes."""
+    m = re.search(r"\d+", str(turma.get("ano") or ""))
+    return 20 if m and 10 <= int(m.group()) <= 12 else 100
+
+
+def _soma_por_dominio(questoes) -> Dict[str, float]:
+    somas: Dict[str, float] = {}
+    for q in questoes:
+        dom = q["dom"] if isinstance(q, dict) else q.dom
+        cot = q["cotacao"] if isinstance(q, dict) else q.cotacao
+        somas[dom] = somas.get(dom, 0) + float(cot or 0)
+    return somas
+
+
+def _validate_cotacoes(turma: dict, questoes: List[Questao]):
+    """Cada domínio avaliado no instrumento tem de totalizar 100 (ou 20) pontos."""
+    alvo = cotacao_alvo(turma)
+    erradas = [f"{d} ({round(v, 2):g})" for d, v in _soma_por_dominio(questoes).items() if abs(v - alvo) > 0.01]
+    if erradas:
+        raise HTTPException(
+            status_code=400,
+            detail=f"As questões de cada domínio têm de somar {alvo} pontos. Verifique: {', '.join(erradas)}.",
+        )
+
+
+def reescalar_cotacoes(questoes: List[dict], alvo: int) -> Optional[List[dict]]:
+    """Ajusta proporcionalmente as cotações de cada domínio para somarem `alvo`.
+    As notas (0-10 por questão) e as percentagens dos alunos não mudam. None se já estiver tudo certo."""
+    somas = _soma_por_dominio(questoes)
+    if all(abs(v - alvo) <= 0.01 or v <= 0 for v in somas.values()):
+        return None
+    novas = [dict(q) for q in questoes]
+    for dom, soma in somas.items():
+        if soma <= 0 or abs(soma - alvo) <= 0.01:
+            continue
+        idx = [i for i, q in enumerate(novas) if q["dom"] == dom]
+        for i in idx:
+            novas[i]["cotacao"] = round(float(novas[i]["cotacao"] or 0) * alvo / soma, 2)
+        # Acerta o arredondamento na questão de maior cotação para a soma dar exatamente `alvo`.
+        maior = max(idx, key=lambda i: novas[i]["cotacao"])
+        novas[maior]["cotacao"] = round(novas[maior]["cotacao"] + alvo - sum(novas[i]["cotacao"] for i in idx), 2)
+    return novas
+
+
+async def migrar_cotacoes_instrumentos():
+    """Converte instrumentos antigos para a regra de 100 (ou 20) pontos por domínio."""
+    alvos: Dict[str, int] = {}
+    n = 0
+    async for inst in db.instrumentos.find({}, {"_id": 0, "id": 1, "turma_id": 1, "questoes": 1}):
+        tid = inst.get("turma_id")
+        if tid not in alvos:
+            turma = await db.turmas.find_one({"id": tid}, {"_id": 0, "ano": 1})
+            alvos[tid] = cotacao_alvo(turma or {})
+        novas = reescalar_cotacoes(inst.get("questoes") or [], alvos[tid])
+        if novas is not None:
+            await db.instrumentos.update_one({"id": inst["id"]}, {"$set": {"questoes": novas}})
+            n += 1
+    if n:
+        log.info(f"Cotações convertidas para 100/20 pontos por domínio em {n} instrumento(s)")
+
+
 @api.post("/instrumentos")
 async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     turma = await get_turma_or_404(turma_id, user)
@@ -748,6 +810,7 @@ async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user:
             raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
         if q.comp and q.comp not in valid_comps:
             raise HTTPException(status_code=400, detail=f"Competência desconhecida: {q.comp}")
+    _validate_cotacoes(turma, body.questoes)
     if body.semestre is not None and body.semestre not in (1, 2):
         raise HTTPException(status_code=400, detail="Semestre inválido (deve ser 1 ou 2)")
     _validate_semestre_date(turma, body.semestre, body.data)
@@ -797,6 +860,7 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
                 raise HTTPException(status_code=400, detail=f"Domínio desconhecido: {q.dom}")
             if q.comp and q.comp not in valid_comps:
                 raise HTTPException(status_code=400, detail=f"Competência desconhecida: {q.comp}")
+        _validate_cotacoes(turma, body.questoes)
         new_q_ids = {q.id for q in body.questoes}
         updates["questoes"] = [q.model_dump() for q in body.questoes]
         # Trim notas: keep only entries with q_id in new_q_ids
@@ -1075,6 +1139,10 @@ async def startup():
     await db.alunos.create_index("turma_id")
     await db.instrumentos.create_index("turma_id")
     await db.users.update_many({"smtp_app_password_enc": {"$exists": True}}, {"$unset": {"smtp_app_password_enc": ""}})
+    try:
+        await migrar_cotacoes_instrumentos()
+    except Exception as e:  # nunca impedir o arranque por causa da conversão
+        log.error(f"Falha ao converter cotações: {e}")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "").lower().strip()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")

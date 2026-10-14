@@ -191,7 +191,7 @@ def test_cannot_remove_referenced_dominio(th, turma_id):
     # Create instrumento using ORG
     inst = requests.post(f"{API}/instrumentos", headers=th, params={"turma_id": turma_id}, json={
         "nome": "Ficha X", "tipo": "ficha", "data": "2026-01-15",
-        "questoes": [{"id": "q1", "dom": "ORG", "cotacao": 20}],
+        "questoes": [{"id": "q1", "dom": "ORG", "cotacao": 100}],
     })
     assert inst.status_code == 200, inst.text
     # Try to remove ORG — should 400
@@ -210,7 +210,7 @@ def test_cannot_remove_referenced_dominio(th, turma_id):
 def test_instrumento_unknown_dom_400(th, turma_id):
     r = requests.post(f"{API}/instrumentos", headers=th, params={"turma_id": turma_id}, json={
         "nome": "F", "tipo": "ficha", "data": "",
-        "questoes": [{"id": "q1", "dom": "XYZ", "cotacao": 10}],
+        "questoes": [{"id": "q1", "dom": "XYZ", "cotacao": 100}],
     })
     assert r.status_code == 400
     assert "XYZ" in r.json()["detail"]
@@ -223,8 +223,8 @@ def test_instrumento_put_edit_and_trim_notas(th, turma_id):
     inst = requests.post(f"{API}/instrumentos", headers=th, params={"turma_id": turma_id}, json={
         "nome": "T1", "tipo": "teste", "data": "2026-01-10",
         "questoes": [
-            {"id": "q1", "dom": "CP", "cotacao": 10},
-            {"id": "q2", "dom": "RRP", "cotacao": 20},
+            {"id": "q1", "dom": "CP", "cotacao": 100},
+            {"id": "q2", "dom": "RRP", "cotacao": 100},
         ],
     }).json()
     iid = inst["id"]
@@ -234,7 +234,7 @@ def test_instrumento_put_edit_and_trim_notas(th, turma_id):
     # PUT edit: rename + drop q2
     r = requests.put(f"{API}/instrumentos/{iid}", headers=th, json={
         "nome": "T1-renamed",
-        "questoes": [{"id": "q1", "dom": "CP", "cotacao": 10}],
+        "questoes": [{"id": "q1", "dom": "CP", "cotacao": 100}],
     })
     assert r.status_code == 200, r.text
     updated = r.json()
@@ -247,7 +247,7 @@ def test_instrumento_put_edit_and_trim_notas(th, turma_id):
 def test_instrumento_put_cross_teacher_404(th, turma_id, admin_token):
     # create instrumento owned by teacher_creds
     inst = requests.post(f"{API}/instrumentos", headers=th, params={"turma_id": turma_id}, json={
-        "nome": "T", "tipo": "ficha", "data": "", "questoes": [{"id": "q1", "dom": "CP", "cotacao": 10}],
+        "nome": "T", "tipo": "ficha", "data": "", "questoes": [{"id": "q1", "dom": "CP", "cotacao": 100}],
     }).json()
     # Create another teacher
     other_email = f"TEST_other_{uuid.uuid4().hex[:6]}@t.pt"
@@ -264,7 +264,7 @@ def test_instrumento_put_cross_teacher_404(th, turma_id, admin_token):
 def test_notas_backend_accepts_any_number(th, turma_id):
     al = requests.post(f"{API}/alunos", headers=th, params={"turma_id": turma_id}, json={"nome": "A"}).json()
     inst = requests.post(f"{API}/instrumentos", headers=th, params={"turma_id": turma_id}, json={
-        "nome": "I", "tipo": "ficha", "data": "", "questoes": [{"id": "q1", "dom": "CP", "cotacao": 20}],
+        "nome": "I", "tipo": "ficha", "data": "", "questoes": [{"id": "q1", "dom": "CP", "cotacao": 100}],
     }).json()
     r = requests.put(f"{API}/instrumentos/{inst['id']}/notas", headers=th,
                      json={"notas": {al["id"]: {"q1": 8.5}}})

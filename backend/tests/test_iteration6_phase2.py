@@ -152,7 +152,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         payload = {
             "nome": "Ficha 1", "tipo": "Ficha", "data": "2025-10-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5, "comp": None}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100, "comp": None}],
             "observacao_direta": [
                 {"parametro_id": "P1", "dom": "ER", "nota": 8.5},
                 {"parametro_id": "P2", "dom": "ER", "nota": 7},
@@ -174,7 +174,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         r = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "X", "tipo": "Ficha", "data": "2025-10-01", "semestre": 3,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
         })
         assert r.status_code == 400
 
@@ -182,7 +182,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         r = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "X", "tipo": "Ficha", "data": "2025-08-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
         })
         assert r.status_code == 400
         assert "anterior" in r.json()["detail"].lower() or "posterior" in r.json()["detail"].lower()
@@ -191,7 +191,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         r = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "X", "tipo": "Ficha", "data": "2025-10-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
             "observacao_direta": [{"parametro_id": "PZ", "dom": "ER", "nota": 5}],
         })
         assert r.status_code == 400
@@ -201,7 +201,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         r = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "X", "tipo": "Ficha", "data": "2025-10-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
             "observacao_direta": [{"parametro_id": "P1", "dom": "ER", "nota": 11}],
         })
         assert r.status_code == 400
@@ -210,7 +210,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         r = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "X", "tipo": "Ficha", "data": "2025-10-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
             "observacao_direta": [{"parametro_id": "P1", "dom": "ZZZ", "nota": 5}],
         })
         assert r.status_code == 400
@@ -219,7 +219,7 @@ class TestInstrumentoPhase2:
         self._configure(turma, th)
         c = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "F1", "tipo": "Ficha", "data": "2025-10-01", "semestre": 1,
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
         })
         assert c.status_code == 200
         inst_id = c.json()["id"]
@@ -265,7 +265,7 @@ class TestRegression:
         # create instrumento
         c = requests.post(f"{BASE_URL}/api/instrumentos?turma_id={turma['id']}", headers=th, json={
             "nome": "F2", "tipo": "Ficha", "data": "",
-            "questoes": [{"id": "1", "dom": "CP", "cotacao": 5}],
+            "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}],
         }).json()
         r = requests.put(f"{BASE_URL}/api/instrumentos/{c['id']}/notas", headers=th, json={
             "notas": {a["id"]: {"1": 4}},
