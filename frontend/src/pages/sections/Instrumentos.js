@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered } from "lucide-react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy } from "lucide-react";
 import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio } from "@/lib/grelha";
 
 function buildInitial(dominios) {
@@ -31,6 +31,8 @@ export default function Instrumentos({
     competencias = [],
     parametrosOD = [],
     addInstrumento,
+    duplicarInstrumento,
+    turmas = [],
     updateInstrumento,
     delInstrumento,
     saveODAvaliacao,
@@ -43,6 +45,7 @@ export default function Instrumentos({
     const [busy, setBusy] = useState(false);
     const [odClassifying, setOdClassifying] = useState(null); // { parametro, sem }
     const [rankingInst, setRankingInst] = useState(null);
+    const [dupInst, setDupInst] = useState(null);
 
     function openNew() { setForm(buildInitial(dominios)); setEditing("new"); setError(""); }
     function openEdit(inst) { setForm(fromInst(inst)); setEditing(inst.id); setError(""); }
@@ -318,6 +321,9 @@ export default function Instrumentos({
                                         <button data-testid={`edit-inst-${inst.id}`} onClick={() => openEdit(inst)} className="btn-ghost !px-2 !py-1.5" title="Editar">
                                             <Pencil size={14} />
                                         </button>
+                                        <button data-testid={`dup-inst-${inst.id}`} onClick={() => setDupInst(inst)} className="btn-ghost !px-2 !py-1.5" title="Duplicar para uma turma">
+                                            <Copy size={14} />
+                                        </button>
                                         <button data-testid={`del-inst-${inst.id}`} onClick={() => delInstrumento(inst.id)} className="btn-danger-ghost" title="Eliminar">
                                             <Trash2 size={14} />
                                         </button>
@@ -390,6 +396,16 @@ export default function Instrumentos({
                     onSave={async (payload) => {
                         await saveODAvaliacao(odClassifying.parametro.id, { ...payload, semestre: odClassifying.sem });
                     }}
+                />
+            )}
+
+            {dupInst && (
+                <DuplicarInstrumentoModal
+                    inst={dupInst}
+                    turmas={turmas}
+                    turmaAtualId={turma?.id}
+                    onDuplicar={duplicarInstrumento}
+                    onClose={() => setDupInst(null)}
                 />
             )}
 
@@ -582,6 +598,98 @@ function RankingAEModal({ inst, alunos, competencias, onClose }) {
                         </div>
                     )}
                 </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+// ─── Duplicar um instrumento para uma turma à escolha ────────────────────────
+function DuplicarInstrumentoModal({ inst, turmas, turmaAtualId, onDuplicar, onClose }) {
+    const outras = turmas.filter((t) => t.id !== turmaAtualId);
+    const [turmaId, setTurmaId] = useState(outras[0]?.id || turmaAtualId || "");
+    const [nome, setNome] = useState(outras.length ? inst.nome : `${inst.nome} (cópia)`);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+    const [result, setResult] = useState(null); // { turma, avisos }
+
+    const labelTurma = (t) => `${t.disciplina} · ${t.ano} ${t.turma}`;
+
+    function escolherTurma(id) {
+        setTurmaId(id);
+        // Na própria turma o nome leva "(cópia)" para não ficarem dois iguais.
+        if (id === turmaAtualId && nome === inst.nome) setNome(`${inst.nome} (cópia)`);
+        if (id !== turmaAtualId && nome === `${inst.nome} (cópia)`) setNome(inst.nome);
+    }
+
+    async function confirmar() {
+        if (!turmaId) { setError("Escolha a turma."); return; }
+        if (!nome.trim()) { setError("Indique um nome."); return; }
+        setBusy(true); setError("");
+        try {
+            const data = await onDuplicar(inst.id, { turma_id: turmaId, nome: nome.trim() });
+            setResult({ turma: turmas.find((t) => t.id === turmaId), avisos: data.avisos || [] });
+        } catch (e) {
+            setError(e?.response?.data?.detail || e.message || "Erro ao duplicar.");
+        } finally { setBusy(false); }
+    }
+
+    return createPortal(
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="card-surface w-full max-w-md p-6 anim-in" onClick={(e) => e.stopPropagation()} data-testid="dup-inst-modal">
+                <div className="flex items-start justify-between mb-5">
+                    <div>
+                        <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
+                            <Copy size={12} /> Duplicar
+                        </div>
+                        <h2 className="font-serif text-xl text-brand-forest">{inst.nome}</h2>
+                    </div>
+                    <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {result ? (
+                    <div className="space-y-4">
+                        <div className="text-sm text-[#2E6B2E] bg-[#E6F3E6] border border-[#B3D9B3] rounded-md px-3 py-2" data-testid="dup-inst-ok">
+                            Instrumento duplicado para <strong>{result.turma ? labelTurma(result.turma) : "a turma escolhida"}</strong>.
+                        </div>
+                        {result.avisos.length > 0 && (
+                            <ul className="text-xs text-[#8A5A19] bg-[#FEF5E6] border border-[#F7DBAA] rounded-md px-3 py-2 space-y-1 list-disc list-inside">
+                                {result.avisos.map((a, i) => <li key={i}>{a}</li>)}
+                            </ul>
+                        )}
+                        <button onClick={onClose} className="btn-primary w-full justify-center">Fechar</button>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Turma de destino</label>
+                            <select data-testid="dup-inst-turma" className="input-forest" value={turmaId} onChange={(e) => escolherTurma(e.target.value)}>
+                                {outras.map((t) => <option key={t.id} value={t.id}>{labelTurma(t)}</option>)}
+                                {turmaAtualId && (
+                                    <option value={turmaAtualId}>
+                                        {(() => { const t = turmas.find((x) => x.id === turmaAtualId); return t ? `${labelTurma(t)} (esta turma)` : "Esta turma"; })()}
+                                    </option>
+                                )}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage block mb-1.5">Nome</label>
+                            <input data-testid="dup-inst-nome" className="input-forest" value={nome} onChange={(e) => setNome(e.target.value)} />
+                        </div>
+                        <p className="text-xs text-brand-charcoal/60 leading-relaxed">
+                            São copiadas as questões, cotações, domínios e aprendizagens essenciais. As classificações dos alunos não são copiadas.
+                        </p>
+                        {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
+                        <div className="flex gap-3">
+                            <button onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
+                            <button data-testid="dup-inst-confirm" onClick={confirmar} disabled={busy} className="btn-primary flex-1 justify-center">
+                                <Copy size={14} /> {busy ? "A duplicar..." : "Duplicar"}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>,
         document.body

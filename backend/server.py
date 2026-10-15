@@ -259,6 +259,10 @@ class InstrumentoUpdate(BaseModel):
     questoes: Optional[List[Questao]] = None
     observacao_direta: Optional[List[ObservacaoNota]] = None
 
+class DuplicarInstrumentoIn(BaseModel):
+    turma_id: str  # turma de destino (do mesmo professor)
+    nome: Optional[str] = None
+
 class NotasUpdate(BaseModel):
     notas: Dict[str, Dict[str, float]]
 
@@ -877,6 +881,68 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
     if updates:
         await db.instrumentos.update_one({"id": inst_id}, {"$set": updates})
     return await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})
+
+@api.post("/instrumentos/{inst_id}/duplicar")
+async def duplicar_instrumento(inst_id: str, body: DuplicarInstrumentoIn, user: dict = Depends(require_teacher)):
+    """Copia um instrumento (sem classificações) para outra turma do professor, adaptando-o à turma de destino."""
+    inst = await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})
+    if not inst:
+        raise HTTPException(status_code=404, detail="Instrumento não encontrado")
+    origem = await get_turma_or_404(inst["turma_id"], user)
+    destino = await get_turma_or_404(body.turma_id, user)
+    avisos: List[str] = []
+
+    doms_destino = {d["code"] for d in destino.get("dominios", DEFAULT_DOMINIOS)}
+    em_falta = sorted({q["dom"] for q in inst.get("questoes") or []} - doms_destino)
+    if em_falta:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A turma de destino não tem o(s) domínio(s) {', '.join(em_falta)}. Configure-o(s) em Configurar antes de duplicar.",
+        )
+
+    # Aprendizagens essenciais: os códigos variam entre turmas, por isso associa-se pelo texto.
+    nome_origem = {c["code"]: (c.get("nome") or "").strip().lower() for c in origem.get("competencias") or []}
+    code_destino = {(c.get("nome") or "").strip().lower(): c["code"] for c in destino.get("competencias") or []}
+    questoes, sem_ae = [], 0
+    for q in inst.get("questoes") or []:
+        q = dict(q)
+        if q.get("comp"):
+            novo = code_destino.get(nome_origem.get(q["comp"], ""))
+            if not novo:
+                sem_ae += 1
+            q["comp"] = novo
+        questoes.append(q)
+    if sem_ae:
+        avisos.append(f"{sem_ae} questão(ões) ficaram sem aprendizagem essencial, porque essa aprendizagem não existe na turma de destino.")
+
+    alvo = cotacao_alvo(destino)
+    reescaladas = reescalar_cotacoes(questoes, alvo)
+    if reescaladas is not None:
+        questoes = reescaladas
+        avisos.append(f"As cotações foram ajustadas para {alvo} pontos por domínio.")
+
+    data, semestre = inst.get("data") or "", inst.get("semestre")
+    try:
+        _validate_semestre_date(destino, semestre, data)
+    except HTTPException:
+        data = ""
+        avisos.append("A data foi retirada, porque fica fora do semestre na turma de destino.")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "turma_id": destino["id"],
+        "nome": (body.nome or inst["nome"]).strip() or inst["nome"],
+        "tipo": inst.get("tipo"),
+        "data": data,
+        "semestre": semestre,
+        "questoes": questoes,
+        "observacao_direta": [],
+        "notas": {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.instrumentos.insert_one(doc)
+    doc.pop("_id", None)
+    return {"instrumento": doc, "avisos": avisos}
 
 @api.put("/instrumentos/{inst_id}/notas")
 async def update_notas(inst_id: str, body: NotasUpdate, user: dict = Depends(require_teacher)):

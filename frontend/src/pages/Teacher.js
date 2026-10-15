@@ -187,6 +187,12 @@ export default function Teacher() {
         const { data } = await api.post("/instrumentos", payload, { params: { turma_id: turmaId } });
         setInsts((s) => [...s, data]);
     }
+    // Copia um instrumento (sem notas) para outra turma; devolve { instrumento, avisos }.
+    async function duplicarInstrumento(instId, payload) {
+        const { data } = await api.post(`/instrumentos/${instId}/duplicar`, payload);
+        if (data.instrumento.turma_id === turmaId) setInsts((s) => [...s, data.instrumento]);
+        return data;
+    }
     async function updateInstrumento(id, payload) {
         const { data } = await api.put(`/instrumentos/${id}`, payload);
         setInsts((s) => s.map((i) => (i.id === id ? data : i)));
@@ -413,6 +419,8 @@ export default function Teacher() {
                                     competencias={competencias}
                                     parametrosOD={parametrosOD}
                                     addInstrumento={addInstrumento}
+                                    duplicarInstrumento={duplicarInstrumento}
+                                    turmas={turmas}
                                     updateInstrumento={updateInstrumento}
                                     delInstrumento={delInstrumento}
                                     saveODAvaliacao={saveODAvaliacao}
