@@ -213,16 +213,23 @@ export function pctAprendizagem(instrumento, compCode, alunoId) {
     return (weighted / totCot) * 100;
 }
 
+// Texto de uma aprendizagem essencial num instrumento: a versão editada pelo professor
+// nesse instrumento (inst.aes_texto[code]) ou, se não houver, o texto original da turma.
+export function nomeAprendizagem(instrumento, code, competencias) {
+    const editado = instrumento?.aes_texto?.[code];
+    if (editado && editado.trim()) return editado.trim();
+    return (competencias || []).find((c) => c.code === code)?.nome || null;
+}
+
 // Ranking das aprendizagens essenciais de UM instrumento pela média da turma
 // (média das % de todos os alunos com notas). Pior primeiro, melhor no fim.
 export function rankingAprendizagens(instrumento, alunos, competencias) {
     const codes = [...new Set((instrumento.questoes || []).map((q) => q.comp).filter(Boolean))];
-    const nomeDe = Object.fromEntries((competencias || []).map((c) => [c.code, c.nome]));
     const ranking = [];
     const semNotas = [];
     for (const code of codes) {
         const pcts = alunos.map((a) => pctAprendizagem(instrumento, code, a.id)).filter((v) => v != null);
-        const item = { code, nome: nomeDe[code] || code, questoes: instrumento.questoes.filter((q) => q.comp === code).length };
+        const item = { code, nome: nomeAprendizagem(instrumento, code, competencias) || code, questoes: instrumento.questoes.filter((q) => q.comp === code).length };
         if (!pcts.length) { semNotas.push(item); continue; }
         ranking.push({ ...item, media: pcts.reduce((s, v) => s + v, 0) / pcts.length, nAlunos: pcts.length });
     }
@@ -253,7 +260,9 @@ export function calcPerfilRecuperacao(turma, aluno, insts, dominios) {
         for (const inst of ordenados) {
             const pct = pctAprendizagem(inst, c.code, aluno.id);
             if (pct == null) continue;
-            if (pct < LIMIAR_RECUPERACAO) aes.push({ code: c.code, nome: (c.nome || "").slice(0, 600), pct: Math.round(pct * 10) / 10 });
+            // Usa o texto editado nesse instrumento, se existir (mais claro para a IA).
+            const nome = nomeAprendizagem(inst, c.code, turma.competencias) || c.nome || "";
+            if (pct < LIMIAR_RECUPERACAO) aes.push({ code: c.code, nome: nome.slice(0, 600), pct: Math.round(pct * 10) / 10 });
             break; // só conta o instrumento mais recente com notas para esta aprendizagem
         }
     }

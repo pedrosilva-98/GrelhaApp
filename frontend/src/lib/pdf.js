@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX, instsParaFinal, isEscala20, formatAvaliacao } from "@/lib/grelha";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX, instsParaFinal, isEscala20, formatAvaliacao, nomeAprendizagem } from "@/lib/grelha";
 // ─── Avaliação final (grelha da turma) ───────────────────────────────────────
 export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -95,7 +95,6 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
         (instrumento.questoes || []).map((q) => q.comp).filter(Boolean)
     ));
     const allComps = turma.competencias || [];
-    const compByCode = Object.fromEntries(allComps.map((c) => [c.code, c]));
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
@@ -137,9 +136,8 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
 
     const cellStyles = {}; // { rowIdx: { colIdx: styles } }
     const body = compsInInstrumento.map((code, rowIdx) => {
-        const c = compByCode[code];
         cellStyles[rowIdx] = {};
-        const label = c?.nome || "(descritor em falta)";
+        const label = nomeAprendizagem(instrumento, code, allComps) || "(descritor em falta)";
         const row = [String(rowIdx + 1).padStart(2, "0"), label];
         const values = [];
         alunos.forEach((a, colOffset) => {
@@ -217,7 +215,7 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
             }
         });
         const avg = total ? (sum / total).toFixed(1) : "—";
-        const label = (compByCode[code]?.nome || "(descritor)").slice(0, 80);
+        const label = (nomeAprendizagem(instrumento, code, allComps) || "(descritor)").slice(0, 80);
         doc.text(
             `• ${label} — média ${avg}%  |  ${low}/${total} aluno(s) abaixo de 60%`,
             40, y, { maxWidth: doc.internal.pageSize.getWidth() - 80 },
@@ -365,7 +363,6 @@ function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts, propos
 
     // Table rows: one per aprendizagem present in the instrumento
     const compsInInstrumento = Array.from(new Set((instrumento.questoes || []).map((q) => q.comp).filter(Boolean)));
-    const compByCode = Object.fromEntries((turma.competencias || []).map((c) => [c.code, c]));
 
     const safeName = `${aluno.nome.replace(/\s+/g, "-")}_${(instrumento.nome || "").replace(/\s+/g, "-")}_${dateStr.replace(/\//g, "-")}`;
 
@@ -383,8 +380,7 @@ function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts, propos
 
     const cellStyles = {};
     const body = compsInInstrumento.map((code, rowIdx) => {
-        const c = compByCode[code];
-        const label = c?.nome || "(descritor em falta)";
+        const label = nomeAprendizagem(instrumento, code, turma.competencias) || "(descritor em falta)";
         const qs = (instrumento.questoes || []).filter((q) => q.comp === code);
         const notas = (instrumento.notas || {})[aluno.id] || {};
         const totCot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);

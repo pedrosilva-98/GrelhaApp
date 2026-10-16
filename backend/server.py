@@ -169,6 +169,9 @@ class PasswordReset(BaseModel):
 class IAAtivaUpdate(BaseModel):
     ia_ativa: bool
 
+class MaxTurmasUpdate(BaseModel):
+    max_turmas: int = Field(ge=1)
+
 class TurmaCreate(BaseModel):
     disciplina: str
     ano: str
@@ -250,6 +253,7 @@ class InstrumentoIn(BaseModel):
     semestre: Optional[int] = None  # 1 or 2
     questoes: List[Questao]
     observacao_direta: Optional[List[ObservacaoNota]] = None
+    aes_texto: Optional[Dict[str, str]] = None  # texto das AE editado só para este instrumento
 
 class InstrumentoUpdate(BaseModel):
     nome: Optional[str] = None
@@ -258,6 +262,7 @@ class InstrumentoUpdate(BaseModel):
     semestre: Optional[int] = None
     questoes: Optional[List[Questao]] = None
     observacao_direta: Optional[List[ObservacaoNota]] = None
+    aes_texto: Optional[Dict[str, str]] = None
 
 class DuplicarInstrumentoIn(BaseModel):
     turma_id: str  # turma de destino (do mesmo professor)
@@ -361,6 +366,14 @@ async def reset_teacher_password(teacher_id: str, body: PasswordReset, _: dict =
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Professor não encontrado")
     return {"ok": True}
+
+@api.put("/admin/teachers/{teacher_id}/max-turmas")
+async def set_teacher_max_turmas(teacher_id: str, body: MaxTurmasUpdate, _: dict = Depends(require_admin)):
+    """Altera o número máximo de turmas. Se o professor já tiver mais, não perde nenhuma: só não pode criar novas."""
+    res = await db.users.update_one({"id": teacher_id, "role": "teacher"}, {"$set": {"max_turmas": body.max_turmas}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Professor não encontrado")
+    return {"max_turmas": body.max_turmas}
 
 @api.put("/admin/teachers/{teacher_id}/ia")
 async def set_teacher_ia(teacher_id: str, body: IAAtivaUpdate, _: dict = Depends(require_admin)):
@@ -787,6 +800,17 @@ def reescalar_cotacoes(questoes: List[dict], alvo: int) -> Optional[List[dict]]:
     return novas
 
 
+def _limpar_aes_texto(aes_texto: Optional[Dict[str, str]], questoes) -> Dict[str, str]:
+    """Mantém só textos não vazios de aprendizagens usadas nas questões do instrumento."""
+    usadas = {(q["comp"] if isinstance(q, dict) else q.comp) for q in questoes}
+    out = {}
+    for code, texto in (aes_texto or {}).items():
+        texto = (texto or "").strip()[:1000]
+        if code in usadas and texto:
+            out[code] = texto
+    return out
+
+
 async def migrar_cotacoes_instrumentos():
     """Converte instrumentos antigos para a regra de 100 (ou 20) pontos por domínio."""
     alvos: Dict[str, int] = {}
@@ -827,6 +851,7 @@ async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user:
         "data": body.data,
         "semestre": body.semestre,
         "questoes": [q.model_dump() for q in body.questoes],
+        "aes_texto": _limpar_aes_texto(body.aes_texto, body.questoes),
         "observacao_direta": [o.model_dump() for o in (body.observacao_direta or [])],
         "notas": {},
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -878,6 +903,9 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
     if body.observacao_direta is not None:
         _validate_observacao_direta(turma, body.observacao_direta)
         updates["observacao_direta"] = [o.model_dump() for o in body.observacao_direta]
+    if body.aes_texto is not None or body.questoes is not None:
+        textos = body.aes_texto if body.aes_texto is not None else (inst.get("aes_texto") or {})
+        updates["aes_texto"] = _limpar_aes_texto(textos, updates.get("questoes", inst.get("questoes") or []))
     if updates:
         await db.instrumentos.update_one({"id": inst_id}, {"$set": updates})
     return await db.instrumentos.find_one({"id": inst_id}, {"_id": 0})
@@ -903,13 +931,16 @@ async def duplicar_instrumento(inst_id: str, body: DuplicarInstrumentoIn, user: 
     # Aprendizagens essenciais: os códigos variam entre turmas, por isso associa-se pelo texto.
     nome_origem = {c["code"]: (c.get("nome") or "").strip().lower() for c in origem.get("competencias") or []}
     code_destino = {(c.get("nome") or "").strip().lower(): c["code"] for c in destino.get("competencias") or []}
-    questoes, sem_ae = [], 0
+    textos_origem = inst.get("aes_texto") or {}
+    questoes, sem_ae, aes_texto = [], 0, {}
     for q in inst.get("questoes") or []:
         q = dict(q)
         if q.get("comp"):
             novo = code_destino.get(nome_origem.get(q["comp"], ""))
             if not novo:
                 sem_ae += 1
+            elif textos_origem.get(q["comp"]):
+                aes_texto[novo] = textos_origem[q["comp"]]
             q["comp"] = novo
         questoes.append(q)
     if sem_ae:
@@ -936,6 +967,7 @@ async def duplicar_instrumento(inst_id: str, body: DuplicarInstrumentoIn, user: 
         "data": data,
         "semestre": semestre,
         "questoes": questoes,
+        "aes_texto": aes_texto,
         "observacao_direta": [],
         "notas": {},
         "created_at": datetime.now(timezone.utc).isoformat(),

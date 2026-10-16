@@ -10,6 +10,7 @@ function buildInitial(dominios) {
         data: "",
         semestre: "",
         questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
+        aes_texto: {}, // texto das aprendizagens editado só para este instrumento: { code: texto }
     };
 }
 
@@ -20,6 +21,7 @@ function fromInst(inst) {
         data: inst.data || "",
         semestre: inst.semestre != null ? String(inst.semestre) : "",
         questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao), comp: q.comp || "" })),
+        aes_texto: { ...(inst.aes_texto || {}) },
     };
 }
 
@@ -93,6 +95,7 @@ export default function Instrumentos({
                 data: form.data,
                 semestre: form.semestre ? parseInt(form.semestre) : null,
                 questoes: qs,
+                aes_texto: aesTextoParaGuardar(qs),
             };
             if (editing === "new") await addInstrumento(payload);
             else await updateInstrumento(editing, payload);
@@ -108,6 +111,27 @@ export default function Instrumentos({
     const alvo = cotacaoAlvo(turma);
     const somasDom = somaCotacoesPorDominio(form.questoes.filter((q) => q.cotacao !== ""));
     const domsAvaliados = dominios.filter((d) => somasDom[d.code] != null);
+
+    // Só se guardam textos editados de aprendizagens usadas no instrumento e diferentes do original.
+    function aesTextoParaGuardar(qs) {
+        const out = {};
+        for (const code of new Set(qs.map((q) => q.comp).filter(Boolean))) {
+            const t = (form.aes_texto?.[code] || "").trim();
+            const original = competencias.find((c) => c.code === code)?.nome?.trim();
+            if (t && t !== original) out[code] = t;
+        }
+        return out;
+    }
+    function setAeTexto(code, texto) {
+        setForm((f) => ({ ...f, aes_texto: { ...(f.aes_texto || {}), [code]: texto } }));
+    }
+    function reporAeTexto(code) {
+        setForm((f) => {
+            const resto = { ...(f.aes_texto || {}) };
+            delete resto[code];
+            return { ...f, aes_texto: resto };
+        });
+    }
 
     function fmtPts(v) {
         return (Math.round(v * 100) / 100).toString().replace(".", ",");
@@ -257,6 +281,34 @@ export default function Instrumentos({
                                                     Ainda não há aprendizagens configuradas. Adicione-as em Configurar.
                                                 </div>
                                             )}
+                                            {q.comp && (() => {
+                                                const original = competencias.find((c) => c.code === q.comp)?.nome || "";
+                                                const editado = form.aes_texto?.[q.comp];
+                                                const alterado = editado != null && editado.trim() !== "" && editado.trim() !== original.trim();
+                                                return (
+                                                    <div className="mt-2">
+                                                        <textarea
+                                                            data-testid={`q-comp-texto-${i}`}
+                                                            className="input-forest text-sm leading-relaxed resize-y"
+                                                            rows={2}
+                                                            value={editado ?? original}
+                                                            onChange={(e) => setAeTexto(q.comp, e.target.value)}
+                                                        />
+                                                        <div className="flex items-center justify-between gap-2 mt-1 text-[11px] text-brand-sage">
+                                                            <span>
+                                                                {alterado
+                                                                    ? "Texto editado só para este instrumento (o original da turma não muda)."
+                                                                    : "Pode editar o texto para este instrumento; o original da turma não muda."}
+                                                            </span>
+                                                            {alterado && (
+                                                                <button type="button" onClick={() => reporAeTexto(q.comp)} className="text-brand-forest hover:underline shrink-0">
+                                                                    Repor original
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 );

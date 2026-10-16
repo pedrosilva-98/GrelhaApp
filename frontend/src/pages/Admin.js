@@ -3,7 +3,7 @@ import api, { formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ResetPasswordModal from "@/components/ResetPasswordModal";
 import TeacherTurmasModal from "@/components/TeacherTurmasModal";
-import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, NotebookPen, LogIn, Loader2 } from "lucide-react";
+import { LogOut, Plus, Trash2, GraduationCap, Copy, KeyRound, Sparkles, School, NotebookPen, LogIn, Loader2, Pencil, Check, X } from "lucide-react";
 
 export default function Admin() {
     const { user, logout, entrarComo } = useAuth();
@@ -173,7 +173,13 @@ export default function Admin() {
                                     <td className="px-5 py-3 font-medium text-brand-charcoal">{t.nome}</td>
                                     <td className="px-5 py-3 font-mono text-xs text-brand-charcoal/80">{t.email}</td>
                                     <td className="px-5 py-3 text-brand-charcoal/70 text-xs">{t.ano_letivo || "—"}</td>
-                                    <td className="px-5 py-3 text-brand-charcoal/70 text-xs tabular-nums">{t.max_turmas ?? "—"}</td>
+                                    <td className="px-5 py-3 text-brand-charcoal/70 text-xs tabular-nums">
+                                        <MaxTurmasCell
+                                            teacher={t}
+                                            onSaved={(v) => setTeachers((s) => s.map((x) => (x.id === t.id ? { ...x, max_turmas: v } : x)))}
+                                            onError={(msg) => setError(msg)}
+                                        />
+                                    </td>
                                     <td className="px-5 py-3">
                                         <button
                                             data-testid={`toggle-ia-${t.id}`}
@@ -305,6 +311,63 @@ export default function Admin() {
                     onClose={() => setTurmasTarget(null)}
                 />
             )}
+        </div>
+    );
+}
+
+// Máx. turmas editável diretamente na tabela.
+function MaxTurmasCell({ teacher, onSaved, onError }) {
+    const [editing, setEditing] = useState(false);
+    const [value, setValue] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    function abrir() { setValue(teacher.max_turmas != null ? String(teacher.max_turmas) : ""); setEditing(true); }
+
+    async function guardar() {
+        const n = parseInt(value, 10);
+        if (!n || n < 1) { onError("O número máximo de turmas tem de ser pelo menos 1."); return; }
+        setBusy(true);
+        try {
+            await api.put(`/admin/teachers/${teacher.id}/max-turmas`, { max_turmas: n });
+            onSaved(n);
+            onError("");
+            setEditing(false);
+        } catch (e) {
+            onError(formatApiError(e));
+        } finally { setBusy(false); }
+    }
+
+    if (!editing) {
+        return (
+            <button
+                data-testid={`edit-max-turmas-${teacher.id}`}
+                onClick={abrir}
+                className="inline-flex items-center gap-1.5 hover:text-brand-forest group"
+                title="Alterar o número máximo de turmas"
+            >
+                {teacher.max_turmas ?? "—"}
+                <Pencil size={11} className="opacity-40 group-hover:opacity-100" />
+            </button>
+        );
+    }
+    return (
+        <div className="flex items-center gap-1">
+            <input
+                data-testid={`max-turmas-input-${teacher.id}`}
+                type="number"
+                min={1}
+                autoFocus
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") guardar(); if (e.key === "Escape") setEditing(false); }}
+                className="input-forest !w-16 !py-1 !px-2 text-xs"
+            />
+            <button onClick={guardar} disabled={busy} className="btn-ghost !px-1.5 !py-1" title="Guardar" data-testid={`max-turmas-save-${teacher.id}`}>
+                <Check size={13} />
+            </button>
+            <button onClick={() => setEditing(false)} className="btn-ghost !px-1.5 !py-1" title="Cancelar">
+                <X size={13} />
+            </button>
         </div>
     );
 }
