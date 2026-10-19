@@ -105,7 +105,10 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                         <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1 flex items-center gap-2">
                             <Eye size={12} /> Perfil do aluno
                         </div>
-                        <h2 className="font-serif text-2xl text-brand-forest">{aluno.nome}</h2>
+                        <h2 className="font-serif text-2xl text-brand-forest">
+                            {aluno.numero != null && <span className="text-brand-sage font-mono text-lg mr-2 tabular-nums">{aluno.numero}.</span>}
+                            {aluno.nome}
+                        </h2>
                     </div>
                     <button data-testid="perfil-close" onClick={onClose} className="text-brand-sage hover:text-brand-charcoal">
                         <X size={20} />
@@ -265,8 +268,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                             </p>
                             {[
                                 { key: "universais", label: "Medidas Universais", hint: "Aplicáveis a todos os alunos" },
-                                { key: "adicionais", label: "Medidas Adicionais", hint: "Apenas em situações específicas" },
                                 { key: "seletivas", label: "Medidas Seletivas", hint: "Necessidades individuais de suporte" },
+                                { key: "adicionais", label: "Medidas Adicionais", hint: "Apenas em situações específicas" },
                             ].map(({ key, label, hint }) => (
                                 <div key={key} data-testid={`medida-${key}`}>
                                     <div className="flex items-baseline justify-between mb-2">

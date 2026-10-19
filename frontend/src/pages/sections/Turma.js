@@ -1,15 +1,36 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Trash2, UserPlus, Upload, X, Check, Eye } from "lucide-react";
+import { Trash2, UserPlus, Upload, X, Check, Eye, GripVertical } from "lucide-react";
 import PerfilAlunoModal from "@/components/PerfilAlunoModal";
 
-export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, addAlunosBulk, updateAluno }) {
+export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, addAlunosBulk, updateAluno, reordenarAlunos }) {
     const [nome, setNome] = useState("");
     const [dn, setDn] = useState("");
     const [nProc, setNProc] = useState("");
     const [email, setEmail] = useState("");
     const [showImport, setShowImport] = useState(false);
     const [perfilAluno, setPerfilAluno] = useState(null);
+    // Reordenar: arrastar a linha ou clicar no nº e escrever a nova posição.
+    const [dragId, setDragId] = useState(null);
+    const [overIdx, setOverIdx] = useState(null);
+    const [editNumId, setEditNumId] = useState(null);
+    const [editNumVal, setEditNumVal] = useState("");
+
+    function moverPara(alunoId, novaPos) {
+        const ids = alunos.map((a) => a.id);
+        const de = ids.indexOf(alunoId);
+        const para = Math.max(0, Math.min(ids.length - 1, novaPos));
+        if (de < 0 || de === para) return;
+        ids.splice(de, 1);
+        ids.splice(para, 0, alunoId);
+        reordenarAlunos(ids);
+    }
+
+    function confirmarNumero(a) {
+        const n = parseInt(editNumVal, 10);
+        setEditNumId(null);
+        if (n >= 1) moverPara(a.id, n - 1);
+    }
 
     async function submit(e) {
         e.preventDefault();
@@ -89,7 +110,7 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                 <table className="w-full text-sm">
                     <thead className="bg-page border-b border-crisp">
                         <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
-                            <th className="px-5 py-2.5 font-semibold w-16">Nº</th>
+                            <th className="px-5 py-2.5 font-semibold w-24" title="Arraste a linha ou clique no nº para mudar a posição">Nº</th>
                             <th className="px-5 py-2.5 font-semibold">Nome</th>
                             <th className="px-5 py-2.5 font-semibold w-36">Data de nascimento</th>
                             <th className="px-5 py-2.5 font-semibold w-32">Nº processo</th>
@@ -101,8 +122,46 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                         {alunos.length === 0 ? (
                             <tr><td colSpan={6} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
                         ) : alunos.map((a, i) => (
-                            <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
-                                <td className="px-5 py-3 font-mono text-xs text-brand-sage tabular-nums">{String(i + 1).padStart(2, "0")}</td>
+                            <tr
+                                key={a.id}
+                                data-testid={`aluno-row-${a.id}`}
+                                draggable={!!reordenarAlunos && editNumId !== a.id}
+                                onDragStart={(e) => { setDragId(a.id); e.dataTransfer.effectAllowed = "move"; }}
+                                onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverIdx(i); } }}
+                                onDrop={(e) => { e.preventDefault(); if (dragId) moverPara(dragId, i); setDragId(null); setOverIdx(null); }}
+                                onDragEnd={() => { setDragId(null); setOverIdx(null); }}
+                                className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""} ${dragId === a.id ? "opacity-40" : ""} ${overIdx === i && dragId && dragId !== a.id ? "outline outline-2 outline-brand-forest/60 -outline-offset-2" : ""}`}
+                            >
+                                <td className="px-3 py-3 font-mono text-xs text-brand-sage tabular-nums">
+                                    <div className="flex items-center gap-1">
+                                        {reordenarAlunos && <GripVertical size={14} className="text-brand-sage/50 cursor-grab shrink-0" title="Arrastar para mudar a posição" />}
+                                        {editNumId === a.id ? (
+                                            <input
+                                                data-testid={`aluno-num-input-${a.id}`}
+                                                type="number"
+                                                min={1}
+                                                max={alunos.length}
+                                                autoFocus
+                                                value={editNumVal}
+                                                onChange={(e) => setEditNumVal(e.target.value)}
+                                                onBlur={() => confirmarNumero(a)}
+                                                onKeyDown={(e) => { if (e.key === "Enter") confirmarNumero(a); if (e.key === "Escape") setEditNumId(null); }}
+                                                className="input-forest !w-14 !py-0.5 !px-1.5 text-xs"
+                                            />
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                data-testid={`aluno-num-${a.id}`}
+                                                disabled={!reordenarAlunos}
+                                                onClick={() => { setEditNumId(a.id); setEditNumVal(String(a.numero ?? i + 1)); }}
+                                                className="hover:text-brand-forest hover:underline"
+                                                title="Clique para mudar o nº do aluno"
+                                            >
+                                                {String(a.numero ?? i + 1).padStart(2, "0")}
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-5 py-3 font-medium text-brand-charcoal">{a.nome}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-PT") : "—"}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.n_processo || "—"}</td>

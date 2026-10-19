@@ -91,10 +91,23 @@ export function getNivel(v) {
     return NIVEIS.find((x) => v >= x.min) || NIVEIS[NIVEIS.length - 1];
 }
 
+// Um instrumento pode aplicar-se só a alguns alunos (inst.alunos_ids); sem lista aplica-se a todos.
+export function aplicaAluno(instrumento, alunoId) {
+    const ids = instrumento?.alunos_ids;
+    return !Array.isArray(ids) || ids.includes(alunoId);
+}
+
+// "12. Ana Silva" — nº do aluno na turma (posição na lista) seguido do nome.
+export function nomeComNumero(aluno) {
+    if (!aluno) return "";
+    return aluno.numero != null ? `${aluno.numero}. ${aluno.nome}` : aluno.nome;
+}
+
 // Classificação (%) de um instrumento num domínio: cada nota (0-10) pondera-se pela cotação da questão.
 // Includes both questões (per-student notas) and observacao_direta items on the instrument
 // (whose nota is a single value applied to any student who has any nota registered).
 export function calcDominioInstrumento(instrumento, alunoId, domCode) {
+    if (!aplicaAluno(instrumento, alunoId)) return null;
     const notas = instrumento.notas?.[alunoId];
     const qs = (instrumento.questoes || []).filter((q) => q.dom === domCode);
     const ods = (instrumento.observacao_direta || []).filter((o) => o.dom === domCode && o.nota != null && o.nota !== "");
@@ -204,6 +217,7 @@ export const LIMIAR_RECUPERACAO = 60;
 // % obtida por um aluno numa aprendizagem essencial de UM instrumento
 // (notas 0-10 ponderadas pela cotação das questões associadas). null se não houver notas.
 export function pctAprendizagem(instrumento, compCode, alunoId) {
+    if (!aplicaAluno(instrumento, alunoId)) return null;
     const qs = (instrumento.questoes || []).filter((q) => q.comp === compCode);
     const notas = instrumento.notas?.[alunoId] || {};
     const totCot = qs.reduce((s, q) => s + Number(q.cotacao || 0), 0);
@@ -274,4 +288,26 @@ export function calcPerfilRecuperacao(turma, aluno, insts, dominios) {
         dominio_fraco: dominioFraco,
         aes,
     };
+}
+
+// ─── Resumo da turma (página Resumo e relatórios em PDF) ──────────────────────
+// sem: 1, 2 ou null (anual). Sucesso = média >= 50% (10 valores no secundário).
+export function resumoTurma({ turma, alunos, insts, dominios, sem = null }) {
+    const filteredInsts = sem ? filterBySemestre(insts, sem, turma) : insts;
+    const finalInsts = instsParaFinal(filteredInsts);
+    const medias = alunos.map((a) => ({
+        ...a,
+        media: calcMediaFinal(finalInsts, dominios, a.id, turma, sem),
+        doms: calcMediasDominioAluno(finalInsts, a.id, dominios, turma, sem),
+    }));
+    const comMedia = medias.filter((a) => a.media != null);
+    const mediaGeral = comMedia.length ? comMedia.reduce((s, a) => s + a.media, 0) / comMedia.length : null;
+    const taxaSucessoPct = comMedia.length ? Math.round((comMedia.filter((a) => a.media >= 50).length / comMedia.length) * 100) : null;
+    const meta = turma?.meta_sucesso != null ? Number(turma.meta_sucesso) : null;
+    const dist = [5, 4, 3, 2, 1].map((n) => ({
+        n,
+        label: NIVEIS.find((x) => x.n === n).label,
+        count: comMedia.filter((a) => getNivel(a.media)?.n === n).length,
+    }));
+    return { filteredInsts, finalInsts, medias, comMedia, mediaGeral, taxaSucessoPct, meta, dist };
 }

@@ -1,38 +1,22 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { FileText, X, Loader2 } from "lucide-react";
 import Badge from "@/components/Badge";
-import { NIVEIS, calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, filterBySemestre, instsParaFinal, isEscala20, formatAvaliacao } from "@/lib/grelha";
+import { domColor, isEscala20, formatAvaliacao, resumoTurma } from "@/lib/grelha";
+import { exportRelatorioSemestrePDF, exportRelatorioAnualPDF } from "@/lib/relatorios";
 
-export default function Dashboard({ turma, alunos, insts, dominios }) {
+export default function Dashboard({ user, turma, alunos, insts, dominios }) {
     const [semFilter, setSemFilter] = useState(""); // "", "1", "2"
+    const [showRelatorios, setShowRelatorios] = useState(false);
     const escala20 = isEscala20(turma);
 
-    const filteredInsts = useMemo(() => {
-        if (!semFilter) return insts;
-        return filterBySemestre(insts, parseInt(semFilter), turma);
-    }, [insts, semFilter, turma]);
-
-    const finalInsts = useMemo(() => instsParaFinal(filteredInsts), [filteredInsts]);
-
-    const medias = alunos.map((a) => ({
-        ...a,
-        media: calcMediaFinal(finalInsts, dominios, a.id, turma, semFilter ? parseInt(semFilter) : null),
-        doms: calcMediasDominioAluno(finalInsts, a.id, dominios, turma, semFilter ? parseInt(semFilter) : null),
-    }));
-    const comMedia = medias.filter((a) => a.media != null);
-    const mediaGeral = comMedia.length ? comMedia.reduce((s, a) => s + a.media, 0) / comMedia.length : null;
-    const taxaSucesso = comMedia.length ? comMedia.filter((a) => a.media >= 50).length / comMedia.length : null;
-    const taxaSucessoPct = taxaSucesso != null ? Math.round(taxaSucesso * 100) : null;
+    const { filteredInsts, medias, mediaGeral, taxaSucessoPct, meta, dist } = useMemo(
+        () => resumoTurma({ turma, alunos, insts, dominios, sem: semFilter ? parseInt(semFilter) : null }),
+        [turma, alunos, insts, dominios, semFilter]
+    );
 
     // 10º-12º: média real na escala 0-20 (às centésimas) e nível = esse valor arredondado às unidades.
     const media20 = (pct) => (pct == null ? null : Math.round((pct / 100) * 20 * 100) / 100);
-
-    const meta = turma?.meta_sucesso != null ? Number(turma.meta_sucesso) : null;
-
-    const dist = [5, 4, 3, 2, 1].map((n) => ({
-        n,
-        label: NIVEIS.find((x) => x.n === n).label,
-        count: comMedia.filter((a) => { const nv = getNivel(a.media); return nv && nv.n === n; }).length,
-    }));
     const maxCount = Math.max(1, ...dist.map((d) => d.count));
 
     const kpis = [
@@ -69,7 +53,23 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                         {f.label}
                     </button>
                 ))}
+                {!semFilter && (
+                    <button data-testid="relatorios-btn" onClick={() => setShowRelatorios(true)} className="btn-ghost ml-auto">
+                        <FileText size={15} /> Relatórios
+                    </button>
+                )}
             </div>
+
+            {showRelatorios && (
+                <RelatoriosModal
+                    onClose={() => setShowRelatorios(false)}
+                    gerar={(tipo) => {
+                        const params = { user, turma, alunos, insts, dominios };
+                        if (tipo === "anual") exportRelatorioAnualPDF(params);
+                        else exportRelatorioSemestrePDF({ ...params, sem: tipo === "s1" ? 1 : 2 });
+                    }}
+                />
+            )}
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {kpis.map((k) => (
@@ -116,7 +116,7 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                             )}
                             {medias.map((a, i) => (
                                 <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
-                                    <td className="px-5 py-3 font-medium text-brand-charcoal">{a.nome}</td>
+                                    <td className="px-5 py-3 font-medium text-brand-charcoal"><span className="font-mono text-xs text-brand-sage tabular-nums mr-2">{a.numero}</span>{a.nome}</td>
                                     {dominios.map((d) => (
                                         <td key={d.code} className="px-4 py-3 tabular-nums text-brand-charcoal/80 font-mono text-[13px]">
                                             {formatAvaliacao(a.doms[d.code], turma)}
@@ -163,5 +163,62 @@ export default function Dashboard({ turma, alunos, insts, dominios }) {
                 </div>
             )}
         </div>
+    );
+}
+
+const TIPOS_RELATORIO = [
+    { id: "s1", label: "Avaliação de 1º semestre", hint: "A informação do Resumo no 1º semestre." },
+    { id: "s2", label: "Avaliação de 2º semestre", hint: "A informação do Resumo no 2º semestre." },
+    { id: "anual", label: "Relatório anual", hint: "Relatório de final de ano letivo, mais completo." },
+];
+
+function RelatoriosModal({ onClose, gerar }) {
+    const [tipo, setTipo] = useState("anual");
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    async function confirmar() {
+        setBusy(true); setError("");
+        try {
+            await new Promise((r) => setTimeout(r, 30)); // deixa aparecer o "A gerar..."
+            gerar(tipo);
+            onClose();
+        } catch (e) {
+            setError(e?.message || "Erro ao gerar o relatório.");
+        } finally { setBusy(false); }
+    }
+
+    return createPortal(
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="card-surface w-full max-w-md p-6 anim-in" onClick={(e) => e.stopPropagation()} data-testid="relatorios-modal">
+                <div className="flex items-start justify-between mb-5">
+                    <h2 className="font-serif text-xl text-brand-forest">Relatórios</h2>
+                    <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal"><X size={20} /></button>
+                </div>
+                <div className="space-y-2">
+                    {TIPOS_RELATORIO.map((t) => (
+                        <label
+                            key={t.id}
+                            data-testid={`relatorio-tipo-${t.id}`}
+                            className={`flex items-start gap-3 rounded-md border px-3 py-2.5 cursor-pointer transition-colors ${tipo === t.id ? "border-brand-forest bg-page" : "border-crisp hover:bg-page"}`}
+                        >
+                            <input type="radio" name="tipo-relatorio" checked={tipo === t.id} onChange={() => setTipo(t.id)} className="mt-1 accent-brand-forest" />
+                            <span>
+                                <span className="block text-sm font-medium text-brand-charcoal">{t.label}</span>
+                                <span className="block text-xs text-brand-charcoal/60">{t.hint}</span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
+                {error && <div className="mt-3 text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
+                <div className="flex gap-3 mt-5">
+                    <button onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
+                    <button data-testid="relatorio-gerar" onClick={confirmar} disabled={busy} className="btn-primary flex-1 justify-center">
+                        {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {busy ? "A gerar..." : "Gerar PDF"}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 }

@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX, instsParaFinal, isEscala20, formatAvaliacao, nomeAprendizagem } from "@/lib/grelha";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, calcDominioInstrumento, NOTA_MAX, instsParaFinal, isEscala20, formatAvaliacao, nomeAprendizagem, nomeComNumero } from "@/lib/grelha";
 // ─── Avaliação final (grelha da turma) ───────────────────────────────────────
 export function exportGrelhaPDF({ user, turma, alunos, insts }) {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -39,7 +39,7 @@ export function exportGrelhaPDF({ user, turma, alunos, insts }) {
         const media = calcMediaFinal(finalInsts, dominios, a.id, turma);
         const nivel = getNivel(media);
         return [
-            String(i + 1).padStart(2, "0"),
+            String(a.numero ?? i + 1).padStart(2, "0"),
             a.nome,
             ...dominios.map((d) => formatAvaliacao(doms[d.code], turma)),
             formatAvaliacao(media, turma),
@@ -131,7 +131,7 @@ export function exportInstrumentoRelatorioPDF({ user, turma, alunos, instrumento
     const startY = 102;
 
     // Table: rows = aprendizagens, cols = "Aprendizagem" + alunos + Média
-    const alunoHeaders = alunos.map((a) => a.nome);
+    const alunoHeaders = alunos.map((a) => nomeComNumero(a));
     const head = [["#", "Aprendizagem", ...alunoHeaders, "Média"]];
 
     const cellStyles = {}; // { rowIdx: { colIdx: styles } }
@@ -331,7 +331,7 @@ function buildRelatorioAlunoDoc({ user, turma, aluno, instrumento, insts, propos
     const domBits = dominios
         .map((d) => (domsPct[d.code] != null ? `${d.code}-${Math.round(domsPct[d.code])}%` : `${d.code}-—`))
         .join(", ");
-    const alunoLabel = `${aluno.nome} (${domBits})`;
+    const alunoLabel = `${nomeComNumero(aluno)} (${domBits})`;
 
     // Header
     doc.setFont("helvetica", "bold");

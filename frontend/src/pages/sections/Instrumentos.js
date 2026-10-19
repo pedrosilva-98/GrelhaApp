@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy } from "lucide-react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy, FileSpreadsheet } from "lucide-react";
+import { exportInstrumentoExcel, exportTodosInstrumentosExcel } from "@/lib/excel";
 import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio } from "@/lib/grelha";
 
 function buildInitial(dominios) {
@@ -11,6 +12,7 @@ function buildInitial(dominios) {
         semestre: "",
         questoes: [{ id: "", dom: dominios[0]?.code || "", cotacao: "", comp: "" }],
         aes_texto: {}, // texto das aprendizagens editado só para este instrumento: { code: texto }
+        alunos_ids: null, // null = todos os alunos; lista = só a estes
     };
 }
 
@@ -22,6 +24,7 @@ function fromInst(inst) {
         semestre: inst.semestre != null ? String(inst.semestre) : "",
         questoes: inst.questoes.map((q) => ({ id: q.id, dom: q.dom, cotacao: String(q.cotacao), comp: q.comp || "" })),
         aes_texto: { ...(inst.aes_texto || {}) },
+        alunos_ids: Array.isArray(inst.alunos_ids) ? [...inst.alunos_ids] : null,
     };
 }
 
@@ -48,6 +51,7 @@ export default function Instrumentos({
     const [odClassifying, setOdClassifying] = useState(null); // { parametro, sem }
     const [rankingInst, setRankingInst] = useState(null);
     const [dupInst, setDupInst] = useState(null);
+    const [showAlunosPicker, setShowAlunosPicker] = useState(false);
 
     function openNew() { setForm(buildInitial(dominios)); setEditing("new"); setError(""); }
     function openEdit(inst) { setForm(fromInst(inst)); setEditing(inst.id); setError(""); }
@@ -80,6 +84,7 @@ export default function Instrumentos({
             .filter((q) => q.id.trim() && q.cotacao !== "" && !Number.isNaN(parseFloat(q.cotacao)))
             .map((q) => ({ id: q.id.trim(), dom: q.dom, cotacao: parseFloat(q.cotacao), comp: q.comp || null }));
         if (!qs.length) { setError("Adicione pelo menos uma questão preenchida."); return; }
+        if (Array.isArray(form.alunos_ids) && !form.alunos_ids.length) { setError("Escolha os alunos a que o instrumento se aplica (ou aplique a todos)."); return; }
         const ids = qs.map((q) => q.id);
         if (new Set(ids).size !== ids.length) { setError("Os identificadores de questão têm de ser únicos."); return; }
         const erradas = Object.entries(somaCotacoesPorDominio(qs)).filter(([, v]) => Math.abs(v - alvo) > 0.01);
@@ -96,6 +101,7 @@ export default function Instrumentos({
                 semestre: form.semestre ? parseInt(form.semestre) : null,
                 questoes: qs,
                 aes_texto: aesTextoParaGuardar(qs),
+                alunos_ids: form.alunos_ids,
             };
             if (editing === "new") await addInstrumento(payload);
             else await updateInstrumento(editing, payload);
@@ -151,9 +157,19 @@ export default function Instrumentos({
                     <h2 className="font-serif text-xl text-brand-forest">Instrumentos de avaliação</h2>
                 </div>
                 {!editing && (
-                    <button data-testid="new-instrumento-btn" onClick={openNew} className="btn-primary">
-                        <FilePlus size={16} /> Novo instrumento
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                            data-testid="excel-todos-btn"
+                            onClick={() => exportTodosInstrumentosExcel({ turma, alunos, insts })}
+                            className="btn-ghost"
+                            title="Descarregar todas as classificações (um separador por instrumento) para guardar uma cópia"
+                        >
+                            <FileSpreadsheet size={16} /> Exportar registos (Excel)
+                        </button>
+                        <button data-testid="new-instrumento-btn" onClick={openNew} className="btn-primary">
+                            <FilePlus size={16} /> Novo instrumento
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -319,6 +335,44 @@ export default function Instrumentos({
                         </button>
                     </div>
 
+                    <div data-testid="inst-aplica-a">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-sage mb-2">Aplica-se a</div>
+                        <div className="flex flex-wrap items-center gap-4 text-sm">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="aplica-a"
+                                    data-testid="aplica-todos"
+                                    checked={!Array.isArray(form.alunos_ids)}
+                                    onChange={() => setForm((f) => ({ ...f, alunos_ids: null }))}
+                                    className="accent-brand-forest"
+                                />
+                                Todos os alunos
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="aplica-a"
+                                    data-testid="aplica-especificos"
+                                    checked={Array.isArray(form.alunos_ids)}
+                                    onChange={() => { setForm((f) => ({ ...f, alunos_ids: f.alunos_ids || [] })); setShowAlunosPicker(true); }}
+                                    className="accent-brand-forest"
+                                />
+                                Alunos específicos
+                            </label>
+                            {Array.isArray(form.alunos_ids) && (
+                                <button type="button" onClick={() => setShowAlunosPicker(true)} className="text-brand-forest hover:underline text-sm" data-testid="aplica-escolher">
+                                    {form.alunos_ids.length ? `${form.alunos_ids.length} aluno(s) selecionado(s) · alterar` : "Escolher alunos"}
+                                </button>
+                            )}
+                        </div>
+                        {Array.isArray(form.alunos_ids) && form.alunos_ids.length > 0 && (
+                            <div className="mt-2 text-xs text-brand-charcoal/70 leading-relaxed">
+                                {alunos.filter((a) => form.alunos_ids.includes(a.id)).map((a) => `${a.numero}. ${a.nome}`).join(" · ")}
+                            </div>
+                        )}
+                    </div>
+
                     {error && <div className="text-sm text-[#9E3921] bg-[#FDF0ED] border border-[#F5C2B8] rounded-md px-3 py-2">{error}</div>}
 
                     <div className="flex gap-3 pt-2">
@@ -348,7 +402,14 @@ export default function Instrumentos({
                             <tr><td colSpan={7} className="px-5 py-12 text-center text-brand-sage">Sem instrumentos criados.</td></tr>
                         ) : insts.map((inst, i) => (
                             <tr key={inst.id} className={`border-b border-crisp last:border-0 row-hover ${i % 2 === 1 ? "bg-page/60" : ""}`}>
-                                <td className="px-5 py-3 font-medium text-brand-charcoal">{inst.nome}</td>
+                                <td className="px-5 py-3 font-medium text-brand-charcoal">
+                                    {inst.nome}
+                                    {Array.isArray(inst.alunos_ids) && (
+                                        <span className="block text-[10px] font-normal text-[#8A5A19] mt-0.5" title={alunos.filter((a) => inst.alunos_ids.includes(a.id)).map((a) => `${a.numero}. ${a.nome}`).join("\n")}>
+                                            Só para {inst.alunos_ids.length} aluno(s)
+                                        </span>
+                                    )}
+                                </td>
                                 <td className="px-5 py-3">
                                     <span className="text-[11px] bg-page border border-crisp text-brand-charcoal/80 px-2 py-0.5 rounded-full">{inst.tipo}</span>
                                     {TIPOS_SEM_NOTA_FINAL.includes(inst.tipo) && (
@@ -366,6 +427,9 @@ export default function Instrumentos({
                                         </button>
                                         <button data-testid={`relatorio-inst-${inst.id}`} onClick={() => onExportRelatorio && onExportRelatorio(inst)} className="btn-ghost !px-2 !py-1.5" title="Exportar relatório por aprendizagens (PDF)">
                                             <FileText size={14} />
+                                        </button>
+                                        <button data-testid={`excel-inst-${inst.id}`} onClick={() => exportInstrumentoExcel({ turma, alunos, inst })} className="btn-ghost !px-2 !py-1.5" title="Exportar registos deste instrumento (Excel)">
+                                            <FileSpreadsheet size={14} />
                                         </button>
                                         <button data-testid={`ranking-inst-${inst.id}`} onClick={() => setRankingInst(inst)} className="btn-ghost !px-2 !py-1.5" title="Ranking de aprendizagens essenciais (da pior para a melhor)">
                                             <ListOrdered size={14} />
@@ -447,6 +511,19 @@ export default function Instrumentos({
                     onClose={() => setOdClassifying(null)}
                     onSave={async (payload) => {
                         await saveODAvaliacao(odClassifying.parametro.id, { ...payload, semestre: odClassifying.sem });
+                    }}
+                />
+            )}
+
+            {showAlunosPicker && (
+                <AlunosInstrumentoModal
+                    alunos={alunos}
+                    selecionados={form.alunos_ids || []}
+                    onConfirm={(ids) => { setForm((f) => ({ ...f, alunos_ids: ids })); setShowAlunosPicker(false); }}
+                    onClose={() => {
+                        setShowAlunosPicker(false);
+                        // Fechou sem escolher ninguém → volta a "Todos os alunos".
+                        setForm((f) => (Array.isArray(f.alunos_ids) && !f.alunos_ids.length ? { ...f, alunos_ids: null } : f));
                     }}
                 />
             )}
@@ -551,7 +628,7 @@ function ODClassifModal({ parametro, semestre, entry, fallbackDom, dominios, alu
                             <tbody>
                                 {alunos.map((a, i) => (
                                     <tr key={a.id} className={`border-b border-crisp last:border-0 ${i % 2 === 1 ? "bg-page/40" : ""}`}>
-                                        <td className="px-3 py-1.5 text-brand-charcoal">{a.nome}</td>
+                                        <td className="px-3 py-1.5 text-brand-charcoal"><span className="font-mono text-xs text-brand-sage tabular-nums mr-2">{a.numero}</span>{a.nome}</td>
                                         <td className="px-3 py-1.5 text-right">
                                             <input
                                                 data-testid={`od-nota-${a.id}`}
@@ -742,6 +819,99 @@ function DuplicarInstrumentoModal({ inst, turmas, turmaAtualId, onDuplicar, onCl
                         </div>
                     </div>
                 )}
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+// ─── Escolher os alunos a que um instrumento se aplica ───────────────────────
+const TIPOS_MEDIDA = [
+    { key: "universais", label: "Universais", cls: "bg-[#EBF4FA] text-[#2B5A84] border-[#B8D4EA]" },
+    { key: "seletivas", label: "Seletivas", cls: "bg-[#FEF5E6] text-[#8A5A19] border-[#F7DBAA]" },
+    { key: "adicionais", label: "Adicionais", cls: "bg-[#FDF0ED] text-[#9E3921] border-[#F5C2B8]" },
+];
+
+function AlunosInstrumentoModal({ alunos, selecionados, onConfirm, onClose }) {
+    const [sel, setSel] = useState(() => new Set(selecionados));
+    const toggle = (id) => setSel((s) => {
+        const n = new Set(s);
+        if (n.has(id)) n.delete(id);
+        else n.add(id);
+        return n;
+    });
+    const comMedidas = alunos.filter((a) => TIPOS_MEDIDA.some((t) => (a.medidas?.[t.key] || []).length));
+
+    return createPortal(
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <div className="card-surface w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden anim-in" onClick={(e) => e.stopPropagation()} data-testid="alunos-inst-modal">
+                <div className="p-6 border-b border-crisp">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.25em] text-brand-sage mb-1">Aplica-se a</div>
+                            <h2 className="font-serif text-xl text-brand-forest">Alunos específicos</h2>
+                        </div>
+                        <button onClick={onClose} className="text-brand-sage hover:text-brand-charcoal"><X size={20} /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-3 text-xs">
+                        <button type="button" className="text-brand-forest hover:underline" onClick={() => setSel(new Set(alunos.map((a) => a.id)))}>Selecionar todos</button>
+                        <button type="button" className="text-brand-forest hover:underline" onClick={() => setSel(new Set())}>Limpar</button>
+                        {comMedidas.length > 0 && (
+                            <button type="button" className="text-brand-forest hover:underline" onClick={() => setSel(new Set(comMedidas.map((a) => a.id)))} data-testid="sel-com-medidas">
+                                Só alunos com medidas ({comMedidas.length})
+                            </button>
+                        )}
+                    </div>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-page border-b border-crisp sticky top-0">
+                            <tr className="text-left text-[11px] uppercase tracking-[0.15em] text-brand-sage">
+                                <th className="px-4 py-2 w-10"></th>
+                                <th className="px-2 py-2 w-12 font-semibold">Nº</th>
+                                <th className="px-2 py-2 font-semibold">Nome</th>
+                                <th className="px-4 py-2 font-semibold">Medidas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {alunos.map((a) => {
+                                const tipos = TIPOS_MEDIDA.filter((t) => (a.medidas?.[t.key] || []).length);
+                                return (
+                                    <tr key={a.id} className="border-b border-crisp last:border-0 row-hover cursor-pointer" onClick={() => toggle(a.id)} data-testid={`alunos-inst-row-${a.id}`}>
+                                        <td className="px-4 py-2">
+                                            <input type="checkbox" checked={sel.has(a.id)} onChange={() => toggle(a.id)} onClick={(e) => e.stopPropagation()} className="accent-brand-forest" />
+                                        </td>
+                                        <td className="px-2 py-2 font-mono text-xs text-brand-sage tabular-nums">{a.numero}</td>
+                                        <td className="px-2 py-2 text-brand-charcoal">{a.nome}</td>
+                                        <td className="px-4 py-2">
+                                            {tipos.length ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {tipos.map((t) => (
+                                                        <span key={t.key} className={`text-[10px] px-2 py-0.5 rounded-full border ${t.cls}`} title={(a.medidas?.[t.key] || []).join("\n")}>
+                                                            {t.label}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : <span className="text-brand-sage text-xs">—</span>}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="p-4 border-t border-crisp flex items-center gap-3">
+                    <span className="text-sm text-brand-charcoal/70 mr-auto">{sel.size} selecionado(s)</span>
+                    <button onClick={onClose} className="btn-ghost">Cancelar</button>
+                    <button
+                        data-testid="alunos-inst-confirm"
+                        disabled={!sel.size}
+                        onClick={() => onConfirm(alunos.filter((a) => sel.has(a.id)).map((a) => a.id))}
+                        className="btn-primary"
+                    >
+                        Confirmar
+                    </button>
+                </div>
             </div>
         </div>,
         document.body

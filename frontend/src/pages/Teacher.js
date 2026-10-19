@@ -11,9 +11,9 @@ import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
-import { calcPerfilRecuperacao } from "@/lib/grelha";
-import { exportGrelhaPDF, exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Download, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
+import { calcPerfilRecuperacao, calcDominioInstrumento, formatAvaliacao, aplicaAluno } from "@/lib/grelha";
+import { exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -36,7 +36,9 @@ export default function Teacher() {
     const [showChangePw, setShowChangePw] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-    const [alunos, setAlunos] = useState([]);
+    const [alunosRaw, setAlunos] = useState([]);
+    // O nº de cada aluno é a sua posição na lista da turma (que o professor pode reordenar).
+    const alunos = useMemo(() => alunosRaw.map((a, i) => ({ ...a, numero: i + 1 })), [alunosRaw]);
     const [insts, setInsts] = useState([]);
     const [classifyingInstId, setClassifyingInstId] = useState(null);
     const [relatorioInst, setRelatorioInst] = useState(null); // instrumento for the aluno-selector modal
@@ -178,6 +180,19 @@ export default function Teacher() {
         const r = await api.get("/instrumentos", { params: { turma_id: turmaId } });
         setInsts(r.data);
     }
+    // Nova ordem dos alunos (lista de ids); o nº de cada um passa a ser a nova posição.
+    async function reordenarAlunos(ids) {
+        const anterior = alunosRaw;
+        const porId = Object.fromEntries(alunosRaw.map((a) => [a.id, a]));
+        setAlunos(ids.map((id) => porId[id]).filter(Boolean));
+        try {
+            const { data } = await api.put("/alunos/ordem", { ids }, { params: { turma_id: turmaId } });
+            setAlunos(data);
+        } catch (e) {
+            setAlunos(anterior);
+            setError(formatApiError(e));
+        }
+    }
     async function updateAluno(id, payload) {
         const { data } = await api.put(`/alunos/${id}`, payload);
         setAlunos((s) => s.map((a) => (a.id === id ? data : a)));
@@ -205,11 +220,6 @@ export default function Teacher() {
     async function saveNotas(instId, notasMap) {
         await api.put(`/instrumentos/${instId}/notas`, { notas: notasMap });
         setInsts((s) => s.map((i) => (i.id === instId ? { ...i, notas: notasMap } : i)));
-    }
-
-    function onExport() {
-        if (!turmaAtiva) return;
-        exportGrelhaPDF({ user, turma: turmaAtiva, alunos, insts });
     }
 
     if (!loadingTurmas && turmas.length === 0) {
@@ -313,9 +323,6 @@ export default function Teacher() {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            <button data-testid="export-pdf-btn" onClick={onExport} disabled={!turmaAtiva} className="btn-ghost">
-                                <Download size={15} /> Exportar avaliação final
-                            </button>
                             <div className="relative">
                                 <button
                                     data-testid="user-menu-btn"
@@ -391,8 +398,8 @@ export default function Teacher() {
                     <div className="text-center text-brand-sage py-24">A carregar...</div>
                 ) : (
                     <>
-                        {tab === "dashboard" && <Dashboard turma={turmaAtiva} alunos={alunos} insts={insts} dominios={dominios} />}
-                        {tab === "alunos" && <Turma turma={turmaAtiva} insts={insts} alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} updateAluno={updateAluno} />}
+                        {tab === "dashboard" && <Dashboard user={user} turma={turmaAtiva} alunos={alunos} insts={insts} dominios={dominios} />}
+                        {tab === "alunos" && <Turma turma={turmaAtiva} insts={insts} alunos={alunos} addAluno={addAluno} delAluno={delAluno} addAlunosBulk={addAlunosBulk} updateAluno={updateAluno} reordenarAlunos={reordenarAlunos} />}
                         {tab === "instrumentos" && (
                             classifyingInstId ? (
                                 <div className="anim-in">
@@ -459,7 +466,16 @@ export default function Teacher() {
 
             {relatorioInst && (
                 <AlunoSelectorModal
-                    alunos={alunos}
+                    alunos={alunos.filter((a) => aplicaAluno(relatorioInst, a.id))}
+                    detalheAluno={(a) => (
+                        <span className="flex items-center gap-2 text-[11px] font-mono tabular-nums" data-testid={`relatorio-doms-${a.id}`}>
+                            {dominios.map((d) => (
+                                <span key={d.code} className="text-brand-charcoal/70">
+                                    <span className="text-brand-sage">{d.code}</span> {formatAvaliacao(calcDominioInstrumento(relatorioInst, a.id, d.code), turmaAtiva)}
+                                </span>
+                            ))}
+                        </span>
+                    )}
                     title="Relatório por aprendizagens"
                     subtitle={`Serão gerados PDFs individuais para o instrumento "${relatorioInst.nome}".`}
                     confirmLabel="Gerar PDFs"

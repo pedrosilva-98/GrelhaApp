@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Badge from "@/components/Badge";
-import { calcClassifInstrumento, calcDominioInstrumento, domColor, NOTA_MAX, isEscala20, formatAvaliacao } from "@/lib/grelha";
+import { calcClassifInstrumento, calcDominioInstrumento, domColor, NOTA_MAX, isEscala20, formatAvaliacao, aplicaAluno } from "@/lib/grelha";
 import { Info, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
-export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
+export default function LancarNotas({ turma, alunos: todosAlunos, insts, dominios, saveNotas, focusedInstId, onBack }) {
     const escala20 = isEscala20(turma);
     const [instId, setInstId] = useState(focusedInstId || insts[0]?.id || null);
 
@@ -18,6 +18,8 @@ export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas,
     }, [insts, instId, focusedInstId]);
 
     const inst = insts.find((i) => i.id === instId);
+    // Só os alunos a quem este instrumento se aplica.
+    const alunos = inst ? todosAlunos.filter((a) => aplicaAluno(inst, a.id)) : todosAlunos;
     const [notas, setNotas] = useState(inst?.notas || {});
     const [status, setStatus] = useState("idle"); // idle | dirty | saving | saved | error
     const [errorMsg, setErrorMsg] = useState("");
@@ -238,6 +240,11 @@ export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas,
                 >
                     {insts.map((i) => <option key={i.id} value={i.id}>{i.nome} · {i.tipo}</option>)}
                 </select>
+                {inst && Array.isArray(inst.alunos_ids) && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FEF5E6] text-[#8A5A19] border border-[#F7DBAA]" data-testid="notas-alunos-especificos">
+                        Aplica-se a {alunos.length} aluno(s) específico(s)
+                    </span>
+                )}
                 <div className="ml-auto text-xs">{statusBadge}</div>
             </div>
 
@@ -267,12 +274,14 @@ export default function LancarNotas({ turma, alunos, insts, dominios, saveNotas,
                             </thead>
                             <tbody>
                                 {alunos.length === 0 ? (
-                                    <tr><td colSpan={inst.questoes.length + dominios.length + (escala20 ? 1 : 2)} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
+                                    <tr><td colSpan={inst.questoes.length + dominios.length + (escala20 ? 2 : 3)} className="px-5 py-10 text-center text-brand-sage">Adicione alunos primeiro.</td></tr>
                                 ) : alunos.map((a, rowIdx) => {
                                     const classif = calcClassifInstrumento(instWithNotas, a.id, dominios);
                                     return (
                                         <tr key={a.id} className={`border-b border-crisp last:border-0 row-hover ${rowIdx % 2 === 1 ? "bg-page/60" : ""}`}>
-                                            <td className="px-5 py-2.5 font-medium text-brand-charcoal whitespace-nowrap">{a.nome}</td>
+                                            <td className="px-5 py-2.5 font-medium text-brand-charcoal whitespace-nowrap">
+                                                <span className="font-mono text-xs text-brand-sage tabular-nums mr-2">{a.numero}</span>{a.nome}
+                                            </td>
                                             {inst.questoes.map((q, colIdx) => {
                                                 const cur = notas[a.id]?.[q.id];
                                                 return (

@@ -230,6 +230,9 @@ class AlunoUpdate(BaseModel):
     email: Optional[str] = None
     medidas: Optional[MedidasEducacaoEspecial] = None
 
+class AlunosOrdemIn(BaseModel):
+    ids: List[str]  # ids dos alunos pela nova ordem (o nº do aluno é a posição + 1)
+
 class AlunosBulkIn(BaseModel):
     # Backwards-compat: `nomes` (strings). New: `alunos` (objects with nome + optional data_nascimento + n_processo)
     nomes: Optional[List[str]] = None
@@ -254,6 +257,7 @@ class InstrumentoIn(BaseModel):
     questoes: List[Questao]
     observacao_direta: Optional[List[ObservacaoNota]] = None
     aes_texto: Optional[Dict[str, str]] = None  # texto das AE editado só para este instrumento
+    alunos_ids: Optional[List[str]] = None  # None = aplica-se a todos os alunos; lista = só a estes
 
 class InstrumentoUpdate(BaseModel):
     nome: Optional[str] = None
@@ -263,6 +267,7 @@ class InstrumentoUpdate(BaseModel):
     questoes: Optional[List[Questao]] = None
     observacao_direta: Optional[List[ObservacaoNota]] = None
     aes_texto: Optional[Dict[str, str]] = None
+    alunos_ids: Optional[List[str]] = None  # enviado explicitamente a null = todos os alunos
 
 class DuplicarInstrumentoIn(BaseModel):
     turma_id: str  # turma de destino (do mesmo professor)
@@ -622,15 +627,47 @@ async def delete_turma(turma_id: str, user: dict = Depends(require_teacher)):
 
 # ─── Alunos ───────────────────────────────────────────────────────────────────
 
+async def alunos_ordenados(turma_id: str) -> List[dict]:
+    """Alunos pela ordem da turma (campo `ordem`; o nº do aluno é a posição + 1).
+    Alunos antigos sem `ordem` recebem-na pela ordem de criação."""
+    alunos = await db.alunos.find({"turma_id": turma_id}).sort([("created_at", 1), ("_id", 1)]).to_list(1000)
+    if any("ordem" not in a for a in alunos):
+        alunos.sort(key=lambda a: (a.get("ordem", float("inf")), a.get("created_at", ""), a["_id"]))
+        for i, a in enumerate(alunos):
+            if a.get("ordem") != i:
+                a["ordem"] = i
+                await db.alunos.update_one({"_id": a["_id"]}, {"$set": {"ordem": i}})
+    alunos.sort(key=lambda a: a["ordem"])
+    for a in alunos:
+        a.pop("_id", None)
+    return alunos
+
+async def proxima_ordem(turma_id: str) -> int:
+    ultimo = await db.alunos.find_one({"turma_id": turma_id, "ordem": {"$exists": True}}, sort=[("ordem", -1)])
+    return (ultimo["ordem"] + 1) if ultimo else await db.alunos.count_documents({"turma_id": turma_id})
+
 @api.get("/alunos")
 async def get_alunos(turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
-    return await db.alunos.find({"turma_id": turma_id}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+    return await alunos_ordenados(turma_id)
+
+@api.put("/alunos/ordem")
+async def reordenar_alunos(body: AlunosOrdemIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
+    """Muda a posição (e por isso o nº) dos alunos na turma."""
+    await get_turma_or_404(turma_id, user)
+    atuais = {a["id"] for a in await db.alunos.find({"turma_id": turma_id}, {"id": 1}).to_list(1000)}
+    if set(body.ids) != atuais or len(body.ids) != len(atuais):
+        raise HTTPException(status_code=400, detail="A lista tem de conter todos os alunos da turma, uma vez cada.")
+    for i, aid in enumerate(body.ids):
+        await db.alunos.update_one({"id": aid, "turma_id": turma_id}, {"$set": {"ordem": i}})
+    return await alunos_ordenados(turma_id)
 
 @api.post("/alunos")
 async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
+    await alunos_ordenados(turma_id)  # garante `ordem` nos alunos antigos
     doc = {
+        "ordem": await proxima_ordem(turma_id),
         "id": str(uuid.uuid4()),
         "turma_id": turma_id,
         "nome": body.nome.strip(),
@@ -646,6 +683,8 @@ async def add_aluno(body: AlunoIn, turma_id: str = Query(...), user: dict = Depe
 @api.post("/alunos/bulk")
 async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: dict = Depends(require_teacher)):
     await get_turma_or_404(turma_id, user)
+    await alunos_ordenados(turma_id)  # garante `ordem` nos alunos antigos
+    ordem0 = await proxima_ordem(turma_id)
     now = datetime.now(timezone.utc).isoformat()
     docs = []
     if body.alunos:
@@ -675,6 +714,8 @@ async def add_alunos_bulk(body: AlunosBulkIn, turma_id: str = Query(...), user: 
             })
     if not docs:
         return {"inserted": 0, "alunos": []}
+    for i, d in enumerate(docs):
+        d["ordem"] = ordem0 + i
     await db.alunos.insert_many([dict(d) for d in docs])
     return {"inserted": len(docs), "alunos": docs}
 
@@ -715,6 +756,10 @@ async def delete_aluno(aluno_id: str, user: dict = Depends(require_teacher)):
     await db.instrumentos.update_many(
         {"turma_id": aluno["turma_id"]},
         {"$unset": {f"notas.{aluno_id}": ""}},
+    )
+    await db.instrumentos.update_many(
+        {"turma_id": aluno["turma_id"], "alunos_ids": aluno_id},
+        {"$pull": {"alunos_ids": aluno_id}},
     )
     return {"ok": True}
 
@@ -811,6 +856,19 @@ def _limpar_aes_texto(aes_texto: Optional[Dict[str, str]], questoes) -> Dict[str
     return out
 
 
+async def _validar_alunos_ids(turma_id: str, ids: Optional[List[str]]) -> Optional[List[str]]:
+    """None = todos os alunos. Uma lista tem de ter pelo menos um aluno, todos desta turma."""
+    if ids is None:
+        return None
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="Escolha pelo menos um aluno (ou aplique a todos).")
+    da_turma = {a["id"] for a in await db.alunos.find({"turma_id": turma_id}, {"id": 1}).to_list(1000)}
+    if any(i not in da_turma for i in ids):
+        raise HTTPException(status_code=400, detail="Há alunos selecionados que não pertencem a esta turma.")
+    return ids
+
+
 async def migrar_cotacoes_instrumentos():
     """Converte instrumentos antigos para a regra de 100 (ou 20) pontos por domínio."""
     alvos: Dict[str, int] = {}
@@ -852,6 +910,7 @@ async def add_instrumento(body: InstrumentoIn, turma_id: str = Query(...), user:
         "semestre": body.semestre,
         "questoes": [q.model_dump() for q in body.questoes],
         "aes_texto": _limpar_aes_texto(body.aes_texto, body.questoes),
+        "alunos_ids": await _validar_alunos_ids(turma_id, body.alunos_ids),
         "observacao_direta": [o.model_dump() for o in (body.observacao_direta or [])],
         "notas": {},
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -903,6 +962,8 @@ async def update_instrumento(inst_id: str, body: InstrumentoUpdate, user: dict =
     if body.observacao_direta is not None:
         _validate_observacao_direta(turma, body.observacao_direta)
         updates["observacao_direta"] = [o.model_dump() for o in body.observacao_direta]
+    if "alunos_ids" in body.model_fields_set:
+        updates["alunos_ids"] = await _validar_alunos_ids(inst["turma_id"], body.alunos_ids)
     if body.aes_texto is not None or body.questoes is not None:
         textos = body.aes_texto if body.aes_texto is not None else (inst.get("aes_texto") or {})
         updates["aes_texto"] = _limpar_aes_texto(textos, updates.get("questoes", inst.get("questoes") or []))
@@ -943,6 +1004,8 @@ async def duplicar_instrumento(inst_id: str, body: DuplicarInstrumentoIn, user: 
                 aes_texto[novo] = textos_origem[q["comp"]]
             q["comp"] = novo
         questoes.append(q)
+    if inst.get("alunos_ids") and destino["id"] != inst["turma_id"]:
+        avisos.append("O original era só para alguns alunos; na turma de destino aplica-se a todos (pode alterar em Editar).")
     if sem_ae:
         avisos.append(f"{sem_ae} questão(ões) ficaram sem aprendizagem essencial, porque essa aprendizagem não existe na turma de destino.")
 
@@ -968,6 +1031,7 @@ async def duplicar_instrumento(inst_id: str, body: DuplicarInstrumentoIn, user: 
         "semestre": semestre,
         "questoes": questoes,
         "aes_texto": aes_texto,
+        "alunos_ids": inst.get("alunos_ids") if destino["id"] == inst["turma_id"] else None,
         "observacao_direta": [],
         "notas": {},
         "created_at": datetime.now(timezone.utc).isoformat(),

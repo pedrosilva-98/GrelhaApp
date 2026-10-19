@@ -14,6 +14,7 @@ export default function AlunoSelectorModal({
     secondaryLabel,
     onSecondaryConfirm,
     recuperacao, // { gerar: async (aluno, n) => ({ questoes } | { semDados: true }) } — ativa a proposta de recuperação
+    detalheAluno, // (aluno) => conteúdo mostrado à direita do nome (ex.: avaliação por domínio no instrumento)
 }) {
     const [selected, setSelected] = useState(new Set(alunos.map((a) => a.id)));
     const [busy, setBusy] = useState(false);
@@ -218,9 +219,16 @@ export default function AlunoSelectorModal({
                                                     className="flex-1 min-w-0 text-left flex items-center gap-3 px-3 py-2"
                                                 >
                                                     {on ? <CheckSquare size={16} className="text-brand-forest shrink-0" /> : <Square size={16} className="text-brand-sage shrink-0" />}
-                                                    <span className="text-xs font-mono text-brand-sage w-6 tabular-nums shrink-0">{String(i + 1).padStart(2, "0")}</span>
+                                                    <span className="text-xs font-mono text-brand-sage w-6 tabular-nums shrink-0">{String(a.numero ?? i + 1).padStart(2, "0")}</span>
                                                     <span className="text-sm text-brand-charcoal truncate">{a.nome}</span>
-                                                    {onSecondaryConfirm && (
+                                                    {detalheAluno ? (
+                                                        <span className="ml-auto flex items-center gap-2 shrink-0">
+                                                            {detalheAluno(a)}
+                                                            {onSecondaryConfirm && !a.email && (
+                                                                <span className="text-[10px] text-brand-sage/60 italic" title="Sem email registado: não recebe o envio por e-mail">sem email</span>
+                                                            )}
+                                                        </span>
+                                                    ) : onSecondaryConfirm && (
                                                         <span className={`ml-auto text-[10px] truncate ${a.email ? "text-brand-sage" : "text-brand-sage/50 italic"}`}>
                                                             {a.email || "sem email"}
                                                         </span>
