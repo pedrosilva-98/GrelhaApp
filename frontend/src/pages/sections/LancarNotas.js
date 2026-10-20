@@ -250,9 +250,10 @@ export default function LancarNotas({ turma, alunos: todosAlunos, insts, dominio
 
             {inst && (
                 <div className="card-surface overflow-hidden">
-                    <div className="overflow-x-auto">
+                    {/* Altura limitada com scroll próprio para o cabeçalho (questões e cotações) ficar sempre visível. */}
+                    <div className="overflow-auto max-h-[calc(100vh-170px)]" data-testid="notas-scroll">
                         <table className="w-full text-sm">
-                            <thead className="bg-page border-b border-crisp sticky top-0">
+                            <thead className="bg-page sticky top-0 z-10 shadow-[0_1px_0_0_#E5E3DB]">
                                 <tr>
                                     <th className="text-left px-5 py-3 text-[11px] uppercase tracking-[0.15em] text-brand-sage font-semibold min-w-[180px]">Aluno</th>
                                     {inst.questoes.map((q) => (

@@ -18,12 +18,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
     const [dn, setDn] = useState(aluno.data_nascimento || "");
     const [nProc, setNProc] = useState(aluno.n_processo || "");
     const [email, setEmail] = useState(aluno.email || "");
-    const initialMedidas = aluno.medidas || { universais: [], adicionais: [], seletivas: [] };
-    const [medidas, setMedidas] = useState({
-        universais: initialMedidas.universais || [],
-        adicionais: initialMedidas.adicionais || [],
-        seletivas: initialMedidas.seletivas || [],
-    });
+    const [problematica, setProblematica] = useState(aluno.problematica || "");
+    const [medidas, setMedidas] = useState(() => medidasIniciais(aluno.medidas));
     const [busy, setBusy] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
@@ -33,12 +29,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
         setDn(aluno.data_nascimento || "");
         setNProc(aluno.n_processo || "");
         setEmail(aluno.email || "");
-        const m = aluno.medidas || { universais: [], adicionais: [], seletivas: [] };
-        setMedidas({
-            universais: m.universais || [],
-            adicionais: m.adicionais || [],
-            seletivas: m.seletivas || [],
-        });
+        setProblematica(aluno.problematica || "");
+        setMedidas(medidasIniciais(aluno.medidas));
     }, [aluno]);
 
     const finalInsts = useMemo(() => instsParaFinal(insts), [insts]);
@@ -75,6 +67,17 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
         setMedidas((s) => ({ ...s, [key]: s[key].filter((_, idx) => idx !== i) }));
     }
 
+    // "Outras medidas": grupos com um tipo escrito pelo professor e a sua lista de medidas.
+    function updateOutras(gi, fn) {
+        setMedidas((s) => ({ ...s, outras: s.outras.map((g, idx) => (idx === gi ? fn(g) : g)) }));
+    }
+    function addOutrasGrupo() {
+        setMedidas((s) => ({ ...s, outras: [...s.outras, { tipo: "", medidas: [""] }] }));
+    }
+    function removeOutrasGrupo(gi) {
+        setMedidas((s) => ({ ...s, outras: s.outras.filter((_, idx) => idx !== gi) }));
+    }
+
     async function handleSave() {
         setError(""); setBusy(true);
         try {
@@ -82,12 +85,16 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                 universais: medidas.universais.map((m) => m.trim()).filter(Boolean),
                 adicionais: medidas.adicionais.map((m) => m.trim()).filter(Boolean),
                 seletivas: medidas.seletivas.map((m) => m.trim()).filter(Boolean),
+                outras: medidas.outras
+                    .map((g) => ({ tipo: g.tipo.trim(), medidas: g.medidas.map((m) => m.trim()).filter(Boolean) }))
+                    .filter((g) => g.tipo || g.medidas.length),
             };
             await onSave(aluno.id, {
                 nome: nome.trim(),
                 data_nascimento: dn || "",
                 n_processo: nProc.trim(),
                 email: email.trim(),
+                problematica: problematica.trim(),
                 medidas: clean,
             });
             setSaved(true);
@@ -266,6 +273,17 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                 Registe as medidas de suporte à aprendizagem e inclusão para este aluno (DL 54/2018).
                                 Adicione uma linha por medida em cada categoria.
                             </p>
+                            <div data-testid="perfil-problematica">
+                                <label className="text-[11px] font-bold uppercase tracking-[0.15em] text-brand-forest block mb-1">Problemática do aluno</label>
+                                <textarea
+                                    data-testid="perfil-problematica-input"
+                                    className="input-forest text-sm leading-relaxed resize-y"
+                                    rows={2}
+                                    placeholder="Identifique a problemática do aluno..."
+                                    value={problematica}
+                                    onChange={(e) => setProblematica(e.target.value)}
+                                />
+                            </div>
                             {[
                                 { key: "universais", label: "Medidas Universais", hint: "Aplicáveis a todos os alunos" },
                                 { key: "seletivas", label: "Medidas Seletivas", hint: "Necessidades individuais de suporte" },
@@ -306,6 +324,60 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                     )}
                                 </div>
                             ))}
+
+                            <div data-testid="medida-outras">
+                                <div className="flex items-baseline justify-between mb-2">
+                                    <div>
+                                        <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-brand-forest">Outras medidas</div>
+                                        <div className="text-[11px] text-brand-charcoal/50">Identifique o tipo de medidas e acrescente as medidas</div>
+                                    </div>
+                                    <button type="button" onClick={addOutrasGrupo} data-testid="add-outras" className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1">
+                                        <Plus size={12} /> Outras medidas
+                                    </button>
+                                </div>
+                                {medidas.outras.length === 0 ? (
+                                    <div className="border-2 border-dashed border-crisp rounded-md py-3 text-center text-brand-sage text-xs">
+                                        Sem outras medidas registadas.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {medidas.outras.map((g, gi) => (
+                                            <div key={gi} className="border border-crisp rounded-md p-3 space-y-2 bg-page/40" data-testid={`outras-grupo-${gi}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        data-testid={`outras-tipo-${gi}`}
+                                                        className="input-forest flex-1 text-sm font-medium"
+                                                        placeholder="Tipo de medidas (ex.: Medidas de saúde, Apoio psicológico...)"
+                                                        value={g.tipo}
+                                                        onChange={(e) => updateOutras(gi, (x) => ({ ...x, tipo: e.target.value }))}
+                                                    />
+                                                    <button type="button" onClick={() => removeOutrasGrupo(gi)} className="btn-danger-ghost" title="Remover este tipo de medidas">
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+                                                {g.medidas.map((m, i) => (
+                                                    <div key={i} className="flex items-center gap-2 pl-2">
+                                                        <span className="text-[10px] font-mono text-brand-sage w-6 shrink-0 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                                                        <input
+                                                            data-testid={`outras-${gi}-${i}`}
+                                                            className="input-forest flex-1 text-sm"
+                                                            placeholder="Descreva a medida..."
+                                                            value={m}
+                                                            onChange={(e) => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.map((v, idx) => (idx === i ? e.target.value : v)) }))}
+                                                        />
+                                                        <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.filter((_, idx) => idx !== i) }))} className="btn-danger-ghost" title="Remover">
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: [...x.medidas, ""] }))} className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1 pl-2" data-testid={`outras-add-${gi}`}>
+                                                    <Plus size={12} /> Adicionar medida
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -330,4 +402,14 @@ function MiniStat({ label, value }) {
             <div className="font-serif text-lg text-brand-forest tabular-nums">{value}</div>
         </div>
     );
+}
+
+function medidasIniciais(m) {
+    m = m || {};
+    return {
+        universais: m.universais || [],
+        adicionais: m.adicionais || [],
+        seletivas: m.seletivas || [],
+        outras: (m.outras || []).map((g) => ({ tipo: g.tipo || "", medidas: [...(g.medidas || [])] })),
+    };
 }

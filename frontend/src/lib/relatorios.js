@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { getNivel, isEscala20, resumoTurma, TIPOS_SEM_NOTA_FINAL } from "@/lib/grelha";
+import { getNivel, isEscala20, resumoTurma, TIPOS_SEM_NOTA_FINAL, outrasMedidas, temMedidas } from "@/lib/grelha";
 import { textoParaPdf } from "@/lib/pdf";
 
 // Relatórios do separador Resumo: avaliação de 1º/2º semestre e relatório anual.
@@ -227,16 +227,21 @@ export function exportRelatorioAnualPDF({ user, turma, alunos, insts, dominios }
     // 2. Educação Especial
     y = seccao(doc, y, "2. Alunos avaliados com medidas de suporte à aprendizagem e à inclusão");
     const avaliados = new Set(anual.comMedia.map((a) => a.id));
-    const comMedidas = alunos.filter((a) => avaliados.has(a.id) && MEDIDAS.some((m) => (a.medidas?.[m.key] || []).length));
+    const comMedidas = alunos.filter((a) => avaliados.has(a.id) && temMedidas(a));
     if (!comMedidas.length) {
         y = paragrafo(doc, y, "Nenhum aluno avaliado tem medidas registadas no perfil.") + 14;
     } else {
         y = paragrafo(doc, y, `${comMedidas.length} aluno(s) com medidas registadas:`) + 4;
-        y = tabela(doc, y, ["Nº", "Aluno", ...MEDIDAS.map((m) => m.label)], comMedidas.map((a) => [
+        y = tabela(doc, y, ["Nº", "Aluno", "Problemática", ...MEDIDAS.map((m) => m.label), "Outras medidas"], comMedidas.map((a) => [
             String(a.numero ?? ""),
             textoParaPdf(a.nome),
+            textoParaPdf(a.problematica || "") || "—",
             ...MEDIDAS.map((m) => textoParaPdf((a.medidas?.[m.key] || []).join("; ")) || "—"),
-        ]), { columnStyles: { 0: { cellWidth: 28, halign: "center" }, 1: { cellWidth: 120 } } });
+            textoParaPdf(outrasMedidas(a).map((g) => `${g.tipo || "Outras"}: ${(g.medidas || []).join("; ")}`).join(" | ")) || "—",
+        ]), {
+            styles: { ...TABELA.styles, fontSize: 8, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 24, halign: "center" }, 1: { cellWidth: 80 } },
+        });
     }
 
     // 3. Média e 4. Sucesso

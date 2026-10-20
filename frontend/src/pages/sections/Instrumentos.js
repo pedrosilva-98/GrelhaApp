@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy, FileSpreadsheet } from "lucide-react";
 import { exportInstrumentoExcel, exportTodosInstrumentosExcel } from "@/lib/excel";
-import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio } from "@/lib/grelha";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio, outrasMedidas, temMedidas } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -840,7 +840,7 @@ function AlunosInstrumentoModal({ alunos, selecionados, onConfirm, onClose }) {
         else n.add(id);
         return n;
     });
-    const comMedidas = alunos.filter((a) => TIPOS_MEDIDA.some((t) => (a.medidas?.[t.key] || []).length));
+    const comMedidas = alunos.filter(temMedidas);
 
     return createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -875,19 +875,31 @@ function AlunosInstrumentoModal({ alunos, selecionados, onConfirm, onClose }) {
                         </thead>
                         <tbody>
                             {alunos.map((a) => {
-                                const tipos = TIPOS_MEDIDA.filter((t) => (a.medidas?.[t.key] || []).length);
+                                const tipos = [
+                                    ...TIPOS_MEDIDA.filter((t) => (a.medidas?.[t.key] || []).length)
+                                        .map((t) => ({ ...t, detalhe: (a.medidas?.[t.key] || []).join("\n") })),
+                                    ...outrasMedidas(a).map((g, gi) => ({
+                                        key: `outras-${gi}`,
+                                        label: g.tipo || "Outras",
+                                        cls: "bg-page text-brand-charcoal/80 border-crisp",
+                                        detalhe: (g.medidas || []).join("\n"),
+                                    })),
+                                ];
                                 return (
                                     <tr key={a.id} className="border-b border-crisp last:border-0 row-hover cursor-pointer" onClick={() => toggle(a.id)} data-testid={`alunos-inst-row-${a.id}`}>
                                         <td className="px-4 py-2">
                                             <input type="checkbox" checked={sel.has(a.id)} onChange={() => toggle(a.id)} onClick={(e) => e.stopPropagation()} className="accent-brand-forest" />
                                         </td>
                                         <td className="px-2 py-2 font-mono text-xs text-brand-sage tabular-nums">{a.numero}</td>
-                                        <td className="px-2 py-2 text-brand-charcoal">{a.nome}</td>
+                                        <td className="px-2 py-2 text-brand-charcoal">
+                                            {a.nome}
+                                            {a.problematica && <span className="block text-[11px] text-brand-charcoal/55">{a.problematica}</span>}
+                                        </td>
                                         <td className="px-4 py-2">
                                             {tipos.length ? (
                                                 <div className="flex flex-wrap gap-1">
                                                     {tipos.map((t) => (
-                                                        <span key={t.key} className={`text-[10px] px-2 py-0.5 rounded-full border ${t.cls}`} title={(a.medidas?.[t.key] || []).join("\n")}>
+                                                        <span key={t.key} className={`text-[10px] px-2 py-0.5 rounded-full border ${t.cls}`} title={t.detalhe}>
                                                             {t.label}
                                                         </span>
                                                     ))}

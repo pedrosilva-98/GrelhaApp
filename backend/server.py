@@ -218,16 +218,22 @@ class AlunoIn(BaseModel):
     n_processo: Optional[str] = None
     email: Optional[str] = None
 
+class OutrasMedidas(BaseModel):
+    tipo: str = ""            # tipo de medidas, escrito pelo professor
+    medidas: List[str] = []
+
 class MedidasEducacaoEspecial(BaseModel):
     universais: List[str] = []
     adicionais: List[str] = []
     seletivas: List[str] = []
+    outras: List[OutrasMedidas] = []
 
 class AlunoUpdate(BaseModel):
     nome: Optional[str] = None
     data_nascimento: Optional[str] = None
     n_processo: Optional[str] = None
     email: Optional[str] = None
+    problematica: Optional[str] = None  # problemática do aluno (Educação Especial)
     medidas: Optional[MedidasEducacaoEspecial] = None
 
 class AlunosOrdemIn(BaseModel):
@@ -740,7 +746,14 @@ async def update_aluno(aluno_id: str, body: AlunoUpdate, user: dict = Depends(re
             "universais": [m.strip() for m in body.medidas.universais if m and m.strip()],
             "adicionais": [m.strip() for m in body.medidas.adicionais if m and m.strip()],
             "seletivas": [m.strip() for m in body.medidas.seletivas if m and m.strip()],
+            "outras": [
+                {"tipo": (g.tipo or "").strip(), "medidas": [m.strip() for m in g.medidas if m and m.strip()]}
+                for g in body.medidas.outras
+                if (g.tipo or "").strip() or any(m and m.strip() for m in g.medidas)
+            ],
         }
+    if body.problematica is not None:
+        updates["problematica"] = body.problematica.strip()
     if updates:
         await db.alunos.update_one({"id": aluno_id}, {"$set": updates})
     return await db.alunos.find_one({"id": aluno_id}, {"_id": 0})

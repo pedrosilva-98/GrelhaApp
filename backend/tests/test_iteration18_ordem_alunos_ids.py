@@ -83,3 +83,19 @@ class TestAlunosIds:
         base = {"nome": "X", "tipo": "Avaliação Sumativa", "data": "", "questoes": [{"id": "1", "dom": "CP", "cotacao": 100}]}
         assert requests.post(f"{API}/instrumentos", params={"turma_id": turma}, headers=th, json={**base, "alunos_ids": []}).status_code == 400
         assert requests.post(f"{API}/instrumentos", params={"turma_id": turma}, headers=th, json={**base, "alunos_ids": ["nao-existe"]}).status_code == 400
+
+
+class TestEducacaoEspecial:
+    def test_problematica_e_outras_medidas(self, th, turma):
+        aid = requests.get(f"{API}/alunos", params={"turma_id": turma}, headers=th).json()[0]["id"]
+        r = requests.put(f"{API}/alunos/{aid}", headers=th, json={
+            "problematica": "  Dislexia ",
+            "medidas": {
+                "universais": ["Apoio tutorial"], "seletivas": [], "adicionais": [],
+                "outras": [{"tipo": "Apoio psicológico", "medidas": ["Sessões semanais", " "]}, {"tipo": "", "medidas": []}],
+            },
+        })
+        assert r.status_code == 200, r.text
+        a = r.json()
+        assert a["problematica"] == "Dislexia"
+        assert a["medidas"]["outras"] == [{"tipo": "Apoio psicológico", "medidas": ["Sessões semanais"]}]

@@ -311,3 +311,14 @@ export function resumoTurma({ turma, alunos, insts, dominios, sem = null }) {
     }));
     return { filteredInsts, finalInsts, medias, comMedia, mediaGeral, taxaSucessoPct, meta, dist };
 }
+
+// ─── Educação Especial ────────────────────────────────────────────────────────
+// "Outras medidas": grupos { tipo, medidas[] } definidos pelo professor.
+export function outrasMedidas(aluno) {
+    return (aluno?.medidas?.outras || []).filter((g) => (g.tipo || "").trim() || (g.medidas || []).length);
+}
+
+export function temMedidas(aluno) {
+    const m = aluno?.medidas || {};
+    return ["universais", "seletivas", "adicionais"].some((k) => (m[k] || []).length) || outrasMedidas(aluno).length > 0;
+}
