@@ -328,7 +328,7 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                         </div>
                                     )}
                                     <datalist id={`lista-${key}`}>
-                                        {MEDIDAS_PADRAO[key].map((o) => <option key={o} value={o} />)}
+                                        {MEDIDAS_PADRAO[key].map((o, i) => <option key={o} value={comAlinea(o, i)} />)}
                                     </datalist>
                                 </div>
                             ))}
@@ -412,7 +412,7 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                     {TIPOS_OUTRAS_MEDIDAS.map((t) => <option key={t} value={t} />)}
                                 </datalist>
                                 <datalist id="lista-art28">
-                                    {MEDIDAS_ART28.map((o) => <option key={o} value={o} />)}
+                                    {MEDIDAS_ART28.map((o, i) => <option key={o} value={comAlinea(o, i)} />)}
                                 </datalist>
                             </div>
                         </div>
@@ -455,8 +455,12 @@ const LIVRE = "__livre__";
 const LETRAS = "abcdefghijklmnopqrstuvwxyz";
 
 // Lista de escolha das medidas padronizadas; a última opção deixa escrever uma medida livre.
+// "b) As adaptações curriculares não significativas": a medida guarda-se com a alínea.
+const comAlinea = (texto, i) => `${LETRAS[i]}) ${texto}`;
+const semAlinea = (texto) => (texto || "").trim().replace(/^[a-z]\)\s*/i, "");
+
 function EscolherMedida({ opcoes, usadas = [], onEscolher, testid }) {
-    const usadasSet = new Set(usadas.map((u) => u.trim()));
+    const usadasSet = new Set(usadas.map(semAlinea));
     return (
         <select
             data-testid={testid}
@@ -466,8 +470,8 @@ function EscolherMedida({ opcoes, usadas = [], onEscolher, testid }) {
         >
             <option value="">＋ Escolher da lista…</option>
             {opcoes.map((o, i) => (
-                <option key={o} value={o} disabled={usadasSet.has(o)}>
-                    {LETRAS[i]}) {o}{usadasSet.has(o) ? " ✓" : ""}
+                <option key={o} value={comAlinea(o, i)} disabled={usadasSet.has(o)}>
+                    {comAlinea(o, i)}{usadasSet.has(o) ? " ✓" : ""}
                 </option>
             ))}
             <option value={LIVRE}>Escrever outra medida…</option>

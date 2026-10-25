@@ -123,14 +123,13 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                             <th className="px-5 py-2.5 font-semibold">Nome</th>
                             <th className="px-5 py-2.5 font-semibold w-36">Data de nascimento</th>
                             <th className="px-5 py-2.5 font-semibold w-32">Nº processo</th>
-                            <th className="px-5 py-2.5 font-semibold w-40" title="Medidas de suporte à aprendizagem e à inclusão (DL 54/2018)">Dec. Lei 54</th>
-                            <th className="px-5 py-2.5 font-semibold">Email</th>
+                            <th className="px-5 py-2.5 font-semibold whitespace-nowrap" title="Medidas de suporte à aprendizagem e à inclusão (DL 54/2018)">Dec. Lei 54</th>
                             <th className="px-5 py-2.5 font-semibold w-16"></th>
                         </tr>
                     </thead>
                     <tbody data-testid="alunos-list">
                         {alunos.length === 0 ? (
-                            <tr><td colSpan={7} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
+                            <tr><td colSpan={6} className="px-5 py-12 text-center text-brand-sage">Nenhum aluno na turma. Adicione o primeiro acima ou importe um CSV.</td></tr>
                         ) : alunos.map((a, i) => (
                             <tr
                                 key={a.id}
@@ -172,19 +171,18 @@ export default function Turma({ turma, insts = [], alunos, addAluno, delAluno, a
                                         )}
                                     </div>
                                 </td>
-                                <td className="px-5 py-3 font-medium text-brand-charcoal">{a.nome}</td>
+                                <td className="px-5 py-3 font-medium text-brand-charcoal whitespace-nowrap">{a.nome}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-PT") : "—"}</td>
                                 <td className="px-5 py-3 text-brand-charcoal/70 text-xs font-mono">{a.n_processo || "—"}</td>
                                 <td className="px-5 py-3" data-testid={`dl54-${a.id}`}>
                                     {siglasDL54(a).length ? (
-                                        <div className="flex flex-wrap gap-1">
+                                        <div className="flex flex-nowrap gap-1 whitespace-nowrap">
                                             {siglasDL54(a).map((s) => (
                                                 <span key={s} title={SIGLA_TITULO[s]} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${SIGLA_COR[s]}`}>{s}</span>
                                             ))}
                                         </div>
                                     ) : <span className="text-brand-sage text-xs">—</span>}
                                 </td>
-                                <td className="px-5 py-3 text-brand-charcoal/70 text-xs">{a.email || "—"}</td>
                                 <td className="px-5 py-3 text-right">
                                     <div className="flex justify-end gap-1">
                                         <button data-testid={`view-aluno-${a.id}`} onClick={() => setPerfilAluno(a)} className="btn-ghost !px-2 !py-1.5" title="Ver perfil">
