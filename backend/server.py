@@ -15,7 +15,7 @@ import bcrypt
 import jwt
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict
+from typing import Any, List, Optional, Dict
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
 from starlette.concurrency import run_in_threadpool
@@ -1302,6 +1302,83 @@ async def root():
     return {"message": "Grelhas API"}
 
 app.include_router(api)
+
+# ─── Cópia de segurança ───────────────────────────────────────────────────────
+
+BACKUP_VERSAO = 1
+
+class TurmaBackupIn(BaseModel):
+    """Uma turma tal como vem no ficheiro de cópia de segurança."""
+    turma: Dict[str, Any]
+    alunos: List[Dict[str, Any]] = []
+    instrumentos: List[Dict[str, Any]] = []
+
+# Campos da turma que a cópia pode repor (prof_id e id nunca vêm do ficheiro).
+CAMPOS_TURMA_BACKUP = ("disciplina", "ano", "turma", "dominios", "competencias", "semestres",
+                       "parametros_od", "meta_sucesso", "od_avaliacoes", "created_at")
+
+@api.get("/backup")
+async def obter_backup(user: dict = Depends(require_teacher)):
+    """Tudo o que o professor registou: turmas, alunos (pela ordem da turma) e instrumentos com as notas."""
+    turmas = await db.turmas.find({"prof_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+    out = []
+    for t in turmas:
+        out.append({
+            "turma": t,
+            "alunos": await alunos_ordenados(t["id"]),
+            "instrumentos": await db.instrumentos.find({"turma_id": t["id"]}, {"_id": 0}).sort("created_at", 1).to_list(1000),
+        })
+    return {
+        "app": "Caderno de Registo de Avaliação",
+        "versao": BACKUP_VERSAO,
+        "gerado_em": datetime.now(timezone.utc).isoformat(),
+        "professor": {"nome": user.get("nome"), "email": user.get("email"),
+                      "agrupamento": user.get("agrupamento"), "ano_letivo": user.get("ano_letivo")},
+        "turmas": out,
+    }
+
+@api.post("/backup/restaurar")
+async def restaurar_backup(body: TurmaBackupIn, user: dict = Depends(require_teacher)):
+    """Repõe UMA turma a partir da cópia. Se a turma ainda existe, os seus alunos, instrumentos e
+    configurações são substituídos pelos da cópia; se não existe, é criada de novo."""
+    tid = str(body.turma.get("id") or "").strip()
+    if not tid or not body.turma.get("disciplina"):
+        raise HTTPException(status_code=400, detail="O ficheiro não tem uma turma válida.")
+    if len(body.alunos) > 1000 or len(body.instrumentos) > 1000:
+        raise HTTPException(status_code=400, detail="A cópia tem demasiados registos.")
+    existente = await db.turmas.find_one({"id": tid}, {"_id": 0, "prof_id": 1})
+    if existente and existente["prof_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Esta turma pertence a outro professor.")
+
+    campos = {k: body.turma[k] for k in CAMPOS_TURMA_BACKUP if k in body.turma}
+    if existente:
+        await db.turmas.update_one({"id": tid}, {"$set": campos})
+        await db.alunos.delete_many({"turma_id": tid})
+        await db.instrumentos.delete_many({"turma_id": tid})
+        acao = "substituida"
+    else:
+        await _check_max_turmas(user)
+        await db.turmas.insert_one({**campos, "id": tid, "prof_id": user["id"],
+                                    "created_at": campos.get("created_at") or datetime.now(timezone.utc).isoformat()})
+        acao = "criada"
+
+    def limpar(doc: dict) -> dict:
+        d = {k: v for k, v in doc.items() if k != "_id"}
+        d["turma_id"] = tid
+        d.setdefault("id", str(uuid.uuid4()))
+        return d
+
+    alunos = [limpar(a) for a in body.alunos if (a.get("nome") or "").strip()]
+    for i, a in enumerate(alunos):
+        a["ordem"] = i
+    if alunos:
+        await db.alunos.insert_many(alunos)
+    instrumentos = [limpar(i) for i in body.instrumentos if i.get("nome")]
+    if instrumentos:
+        await db.instrumentos.insert_many(instrumentos)
+    log.info(f"Cópia restaurada ({acao}) turma {tid} por {user.get('email')}: {len(alunos)} alunos, {len(instrumentos)} instrumentos")
+    return {"acao": acao, "turma_id": tid, "alunos": len(alunos), "instrumentos": len(instrumentos)}
+
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
 

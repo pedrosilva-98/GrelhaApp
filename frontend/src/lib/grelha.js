@@ -322,3 +322,58 @@ export function temMedidas(aluno) {
     const m = aluno?.medidas || {};
     return ["universais", "seletivas", "adicionais"].some((k) => (m[k] || []).length) || outrasMedidas(aluno).length > 0;
 }
+
+// Medidas de suporte à aprendizagem e à inclusão (DL 54/2018) — sugestões das listas de escolha.
+export const MEDIDAS_PADRAO = {
+    universais: [
+        "A diferenciação pedagógica",
+        "As acomodações curriculares",
+        "O enriquecimento curricular",
+        "A promoção do comportamento pró-social",
+        "A intervenção com foco académico ou comportamental em pequenos grupos",
+    ],
+    seletivas: [
+        "Os percursos curriculares diferenciados",
+        "As adaptações curriculares não significativas",
+        "O apoio psicopedagógico",
+        "A antecipação e o reforço das aprendizagens",
+        "O apoio tutorial",
+    ],
+    adicionais: [
+        "A frequência do ano de escolaridade por disciplinas",
+        "As adaptações curriculares significativas",
+        "O plano individual de transição",
+        "O desenvolvimento de metodologias e estratégias de ensino estruturado",
+        "O desenvolvimento de competências de autonomia pessoal e social",
+    ],
+};
+
+export const TIPO_ART28 = "Artigo 28.º - Adaptações ao processo de avaliação";
+export const TIPOS_OUTRAS_MEDIDAS = [TIPO_ART28];
+export const MEDIDAS_ART28 = [
+    "A diversificação dos instrumentos de recolha de informação, tais como, inquéritos, entrevistas, registos vídeo ou áudio",
+    "Os enunciados em formatos acessíveis, nomeadamente braille, tabelas e mapas em relevo, daisy, digital",
+    "A interpretação em LGP",
+    "A utilização de produtos de apoio",
+    "O tempo suplementar para realização da prova",
+    "A transcrição das respostas",
+    "A leitura de enunciados",
+    "A utilização de sala separada",
+    "As pausas vigiadas",
+    "O código de identificação de cores nos enunciados",
+];
+
+export function isArt28(tipo) {
+    return /^\s*art(igo|\.)?\s*28/i.test(tipo || "");
+}
+
+// Siglas da coluna "Dec. Lei 54": MU, MS, MA e Art.28.
+export function siglasDL54(aluno) {
+    const m = aluno?.medidas || {};
+    const out = [];
+    if ((m.universais || []).length) out.push("MU");
+    if ((m.seletivas || []).length) out.push("MS");
+    if ((m.adicionais || []).length) out.push("MA");
+    if (outrasMedidas(aluno).some((g) => isArt28(g.tipo))) out.push("Art.28");
+    return out;
+}

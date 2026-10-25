@@ -11,9 +11,10 @@ import TurmasEmpty from "@/components/TurmasEmpty";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import AlunoSelectorModal from "@/components/AlunoSelectorModal";
+import CopiaSegurancaModal from "@/components/CopiaSegurancaModal";
 import { calcPerfilRecuperacao, calcDominioInstrumento, formatAvaliacao, aplicaAluno } from "@/lib/grelha";
 import { exportInstrumentoRelatorioAlunoPDF, getInstrumentoRelatorioAlunoPDFBlob, blobToBase64 } from "@/lib/pdf";
-import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, ClipboardList, Pencil, Settings, Plus, Trash2, ChevronDown, Copy, KeyRound, NotebookPen, ShieldCheck } from "lucide-react";
 
 const TABS = [
     { id: "dashboard", label: "Resumo", icon: LayoutDashboard },
@@ -35,6 +36,7 @@ export default function Teacher() {
     const [showTurmaPicker, setShowTurmaPicker] = useState(false);
     const [showChangePw, setShowChangePw] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [showBackup, setShowBackup] = useState(false);
 
     const [alunosRaw, setAlunos] = useState([]);
     // O nº de cada aluno é a sua posição na lista da turma (que o professor pode reordenar).
@@ -226,8 +228,11 @@ export default function Teacher() {
         return (
             <div className="min-h-screen">
                 <ImpersonationBanner />
-                <SimpleHeader user={user} onLogout={logout} />
+                <SimpleHeader user={user} onLogout={logout} onBackup={() => setShowBackup(true)} />
                 <TurmasEmpty onCreate={() => setShowTurmaModal(true)} />
+                {showBackup && (
+                    <CopiaSegurancaModal onClose={() => setShowBackup(false)} onRestaurado={() => loadTurmas()} />
+                )}
                 {showTurmaModal && (
                     <TurmaFormModal onClose={() => setShowTurmaModal(false)} onSubmit={createTurma} />
                 )}
@@ -349,6 +354,13 @@ export default function Teacher() {
                                                 </button>
                                             )}
                                             <button
+                                                data-testid="menu-backup"
+                                                onClick={() => { setUserMenuOpen(false); setShowBackup(true); }}
+                                                className="w-full text-left px-4 py-2.5 text-sm text-brand-charcoal hover:bg-page transition-colors duration-150 flex items-center gap-2"
+                                            >
+                                                <ShieldCheck size={14} /> Cópia de segurança
+                                            </button>
+                                            <button
                                                 onClick={() => { setUserMenuOpen(false); logout(); }}
                                                 className="w-full text-left px-4 py-2.5 text-sm text-[#9E3921] hover:bg-[#FDF0ED] transition-colors duration-150 flex items-center gap-2"
                                             >
@@ -460,6 +472,16 @@ export default function Teacher() {
                 />
             )}
 
+            {showBackup && (
+                <CopiaSegurancaModal
+                    onClose={() => setShowBackup(false)}
+                    onRestaurado={async () => {
+                        await loadTurmas(turmaId);
+                        if (turmaId) await loadTurmaData(turmaId);
+                    }}
+                />
+            )}
+
             {showChangePw && (
                 <ChangePasswordModal onClose={() => setShowChangePw(false)} />
             )}
@@ -524,7 +546,7 @@ export default function Teacher() {
     );
 }
 
-function SimpleHeader({ user, onLogout }) {
+function SimpleHeader({ user, onLogout, onBackup }) {
     return (
         <header className="bg-surface border-b border-crisp">
             <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
@@ -537,9 +559,16 @@ function SimpleHeader({ user, onLogout }) {
                         <div className="font-serif text-xl text-brand-forest">{user?.nome}</div>
                     </div>
                 </div>
-                <button data-testid="logout-btn" onClick={onLogout} className="btn-ghost">
-                    <LogOut size={15} /> Sair
-                </button>
+                <div className="flex items-center gap-2">
+                    {onBackup && (
+                        <button data-testid="simple-backup-btn" onClick={onBackup} className="btn-ghost">
+                            <ShieldCheck size={15} /> Cópia de segurança
+                        </button>
+                    )}
+                    <button data-testid="logout-btn" onClick={onLogout} className="btn-ghost">
+                        <LogOut size={15} /> Sair
+                    </button>
+                </div>
             </div>
         </header>
     );

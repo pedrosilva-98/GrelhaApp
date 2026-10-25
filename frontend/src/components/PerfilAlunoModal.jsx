@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Plus, Save, Trash2, Eye, GraduationCap, Radar as RadarIcon } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, ResponsiveContainer } from "recharts";
-import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, instsParaFinal, isEscala20, formatAvaliacao, odEntry, NOTA_MAX } from "@/lib/grelha";
+import { calcMediaFinal, calcMediasDominioAluno, getNivel, domColor, instsParaFinal, isEscala20, formatAvaliacao, odEntry, NOTA_MAX, MEDIDAS_PADRAO, TIPOS_OUTRAS_MEDIDAS, MEDIDAS_ART28, isArt28 } from "@/lib/grelha";
 import Badge from "@/components/Badge";
 
 const TABS = [
@@ -60,8 +60,9 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
     function updateMedida(key, i, val) {
         setMedidas((s) => ({ ...s, [key]: s[key].map((m, idx) => (idx === i ? val : m)) }));
     }
-    function addMedida(key) {
-        setMedidas((s) => ({ ...s, [key]: [...s[key], ""] }));
+    // Acrescenta uma medida (da lista ou em branco para escrever); linhas vazias são substituídas.
+    function addMedida(key, texto = "") {
+        setMedidas((s) => ({ ...s, [key]: [...s[key].filter((m) => m.trim()), texto] }));
     }
     function removeMedida(key, i) {
         setMedidas((s) => ({ ...s, [key]: s[key].filter((_, idx) => idx !== i) }));
@@ -71,8 +72,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
     function updateOutras(gi, fn) {
         setMedidas((s) => ({ ...s, outras: s.outras.map((g, idx) => (idx === gi ? fn(g) : g)) }));
     }
-    function addOutrasGrupo() {
-        setMedidas((s) => ({ ...s, outras: [...s.outras, { tipo: "", medidas: [""] }] }));
+    function addOutrasGrupo(tipo = "") {
+        setMedidas((s) => ({ ...s, outras: [...s.outras, { tipo, medidas: isArt28(tipo) ? [] : [""] }] }));
     }
     function removeOutrasGrupo(gi) {
         setMedidas((s) => ({ ...s, outras: s.outras.filter((_, idx) => idx !== gi) }));
@@ -270,8 +271,8 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                     {tab === "especial" && (
                         <div className="space-y-5" data-testid="perfil-especial">
                             <p className="text-sm text-brand-charcoal/70 leading-relaxed">
-                                Registe as medidas de suporte à aprendizagem e inclusão para este aluno (DL 54/2018).
-                                Adicione uma linha por medida em cada categoria.
+                                Registe as medidas de suporte à aprendizagem e à inclusão deste aluno (DL 54/2018).
+                                Escolha as medidas da lista; depois de escolhidas, o texto pode ser editado.
                             </p>
                             <div data-testid="perfil-problematica">
                                 <label className="text-[11px] font-bold uppercase tracking-[0.15em] text-brand-forest block mb-1">Problemática do aluno</label>
@@ -290,14 +291,17 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                 { key: "adicionais", label: "Medidas Adicionais", hint: "Apenas em situações específicas" },
                             ].map(({ key, label, hint }) => (
                                 <div key={key} data-testid={`medida-${key}`}>
-                                    <div className="flex items-baseline justify-between mb-2">
+                                    <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                                         <div>
                                             <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-brand-forest">{label}</div>
                                             <div className="text-[11px] text-brand-charcoal/50">{hint}</div>
                                         </div>
-                                        <button type="button" onClick={() => addMedida(key)} data-testid={`add-${key}`} className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1">
-                                            <Plus size={12} /> Adicionar
-                                        </button>
+                                        <EscolherMedida
+                                            testid={`add-${key}`}
+                                            opcoes={MEDIDAS_PADRAO[key]}
+                                            usadas={medidas[key]}
+                                            onEscolher={(texto) => addMedida(key, texto)}
+                                        />
                                     </div>
                                     {medidas[key].length === 0 ? (
                                         <div className="border-2 border-dashed border-crisp rounded-md py-3 text-center text-brand-sage text-xs">
@@ -312,6 +316,7 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                                         data-testid={`medida-${key}-${i}`}
                                                         className="input-forest flex-1 text-sm"
                                                         placeholder="Descreva a medida..."
+                                                        list={`lista-${key}`}
                                                         value={m}
                                                         onChange={(e) => updateMedida(key, i, e.target.value)}
                                                     />
@@ -322,18 +327,28 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                             ))}
                                         </div>
                                     )}
+                                    <datalist id={`lista-${key}`}>
+                                        {MEDIDAS_PADRAO[key].map((o) => <option key={o} value={o} />)}
+                                    </datalist>
                                 </div>
                             ))}
 
                             <div data-testid="medida-outras">
-                                <div className="flex items-baseline justify-between mb-2">
+                                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                                     <div>
                                         <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-brand-forest">Outras medidas</div>
-                                        <div className="text-[11px] text-brand-charcoal/50">Identifique o tipo de medidas e acrescente as medidas</div>
+                                        <div className="text-[11px] text-brand-charcoal/50">Escolha o tipo de medidas e acrescente as medidas</div>
                                     </div>
-                                    <button type="button" onClick={addOutrasGrupo} data-testid="add-outras" className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1">
-                                        <Plus size={12} /> Outras medidas
-                                    </button>
+                                    <select
+                                        data-testid="add-outras"
+                                        className="input-forest !w-auto !py-1.5 text-xs text-brand-forest"
+                                        value=""
+                                        onChange={(e) => { if (e.target.value) addOutrasGrupo(e.target.value === LIVRE ? "" : e.target.value); }}
+                                    >
+                                        <option value="">＋ Outras medidas…</option>
+                                        {TIPOS_OUTRAS_MEDIDAS.map((t) => <option key={t} value={t}>{t}</option>)}
+                                        <option value={LIVRE}>Outro tipo (escrever)…</option>
+                                    </select>
                                 </div>
                                 {medidas.outras.length === 0 ? (
                                     <div className="border-2 border-dashed border-crisp rounded-md py-3 text-center text-brand-sage text-xs">
@@ -341,42 +356,64 @@ export default function PerfilAlunoModal({ aluno, turma, insts, onClose, onSave 
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {medidas.outras.map((g, gi) => (
-                                            <div key={gi} className="border border-crisp rounded-md p-3 space-y-2 bg-page/40" data-testid={`outras-grupo-${gi}`}>
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        data-testid={`outras-tipo-${gi}`}
-                                                        className="input-forest flex-1 text-sm font-medium"
-                                                        placeholder="Tipo de medidas (ex.: Medidas de saúde, Apoio psicológico...)"
-                                                        value={g.tipo}
-                                                        onChange={(e) => updateOutras(gi, (x) => ({ ...x, tipo: e.target.value }))}
-                                                    />
-                                                    <button type="button" onClick={() => removeOutrasGrupo(gi)} className="btn-danger-ghost" title="Remover este tipo de medidas">
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </div>
-                                                {g.medidas.map((m, i) => (
-                                                    <div key={i} className="flex items-center gap-2 pl-2">
-                                                        <span className="text-[10px] font-mono text-brand-sage w-6 shrink-0 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                                        {medidas.outras.map((g, gi) => {
+                                            const opcoes = isArt28(g.tipo) ? MEDIDAS_ART28 : [];
+                                            return (
+                                                <div key={gi} className="border border-crisp rounded-md p-3 space-y-2 bg-page/40" data-testid={`outras-grupo-${gi}`}>
+                                                    <div className="flex items-center gap-2">
                                                         <input
-                                                            data-testid={`outras-${gi}-${i}`}
-                                                            className="input-forest flex-1 text-sm"
-                                                            placeholder="Descreva a medida..."
-                                                            value={m}
-                                                            onChange={(e) => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.map((v, idx) => (idx === i ? e.target.value : v)) }))}
+                                                            data-testid={`outras-tipo-${gi}`}
+                                                            className="input-forest flex-1 text-sm font-medium"
+                                                            placeholder="Tipo de medidas"
+                                                            list="lista-tipos-outras"
+                                                            value={g.tipo}
+                                                            onChange={(e) => updateOutras(gi, (x) => ({ ...x, tipo: e.target.value }))}
                                                         />
-                                                        <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.filter((_, idx) => idx !== i) }))} className="btn-danger-ghost" title="Remover">
+                                                        <button type="button" onClick={() => removeOutrasGrupo(gi)} className="btn-danger-ghost" title="Remover este tipo de medidas">
                                                             <Trash2 size={13} />
                                                         </button>
                                                     </div>
-                                                ))}
-                                                <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: [...x.medidas, ""] }))} className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1 pl-2" data-testid={`outras-add-${gi}`}>
-                                                    <Plus size={12} /> Adicionar medida
-                                                </button>
-                                            </div>
-                                        ))}
+                                                    {g.medidas.map((m, i) => (
+                                                        <div key={i} className="flex items-center gap-2 pl-2">
+                                                            <span className="text-[10px] font-mono text-brand-sage w-6 shrink-0 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                                                            <input
+                                                                data-testid={`outras-${gi}-${i}`}
+                                                                className="input-forest flex-1 text-sm"
+                                                                placeholder="Descreva a medida..."
+                                                                list={opcoes.length ? "lista-art28" : undefined}
+                                                                value={m}
+                                                                onChange={(e) => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.map((v, idx) => (idx === i ? e.target.value : v)) }))}
+                                                            />
+                                                            <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: x.medidas.filter((_, idx) => idx !== i) }))} className="btn-danger-ghost" title="Remover">
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <div className="pl-2">
+                                                        {opcoes.length ? (
+                                                            <EscolherMedida
+                                                                testid={`outras-add-${gi}`}
+                                                                opcoes={opcoes}
+                                                                usadas={g.medidas}
+                                                                onEscolher={(texto) => updateOutras(gi, (x) => ({ ...x, medidas: [...x.medidas.filter((v) => v.trim()), texto] }))}
+                                                            />
+                                                        ) : (
+                                                            <button type="button" onClick={() => updateOutras(gi, (x) => ({ ...x, medidas: [...x.medidas, ""] }))} className="text-xs text-brand-forest hover:text-brand-forest-hover flex items-center gap-1" data-testid={`outras-add-${gi}`}>
+                                                                <Plus size={12} /> Adicionar medida
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
+                                <datalist id="lista-tipos-outras">
+                                    {TIPOS_OUTRAS_MEDIDAS.map((t) => <option key={t} value={t} />)}
+                                </datalist>
+                                <datalist id="lista-art28">
+                                    {MEDIDAS_ART28.map((o) => <option key={o} value={o} />)}
+                                </datalist>
                             </div>
                         </div>
                     )}
@@ -412,4 +449,28 @@ function medidasIniciais(m) {
         seletivas: m.seletivas || [],
         outras: (m.outras || []).map((g) => ({ tipo: g.tipo || "", medidas: [...(g.medidas || [])] })),
     };
+}
+
+const LIVRE = "__livre__";
+const LETRAS = "abcdefghijklmnopqrstuvwxyz";
+
+// Lista de escolha das medidas padronizadas; a última opção deixa escrever uma medida livre.
+function EscolherMedida({ opcoes, usadas = [], onEscolher, testid }) {
+    const usadasSet = new Set(usadas.map((u) => u.trim()));
+    return (
+        <select
+            data-testid={testid}
+            className="input-forest !w-auto max-w-full !py-1.5 text-xs text-brand-forest"
+            value=""
+            onChange={(e) => { const v = e.target.value; if (v) onEscolher(v === LIVRE ? "" : v); }}
+        >
+            <option value="">＋ Escolher da lista…</option>
+            {opcoes.map((o, i) => (
+                <option key={o} value={o} disabled={usadasSet.has(o)}>
+                    {LETRAS[i]}) {o}{usadasSet.has(o) ? " ✓" : ""}
+                </option>
+            ))}
+            <option value={LIVRE}>Escrever outra medida…</option>
+        </select>
+    );
 }
