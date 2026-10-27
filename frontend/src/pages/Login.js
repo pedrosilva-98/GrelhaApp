@@ -116,8 +116,8 @@ export default function Login() {
             {/* Right panel — hero */}
             <div className="relative hidden lg:block overflow-hidden">
                 <img
-                    alt="Costa Nova, Portugal"
-                    src="https://images.unsplash.com/photo-1563416854-0e5e3a0cfdb5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njl8MHwxfHNlYXJjaHw0fHxwb3J0dWdhbCUyMGFyY2hpdGVjdHVyZSUyMGFic3RyYWN0fGVufDB8fHx8MTc4MzUyMDIxOHww&ixlib=rb-4.1.0&q=85"
+                    alt="Alunos de braço no ar numa sala de aula"
+                    src={`${process.env.PUBLIC_URL}/sala-de-aula.jpg`}
                     className="absolute inset-0 w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-brand-forest/70 via-brand-forest/30 to-transparent" />
