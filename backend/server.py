@@ -1295,14 +1295,6 @@ async def proposta_recuperacao(body: PropostaIn, user: dict = Depends(require_te
         raise HTTPException(status_code=502, detail="A IA não devolveu questões válidas. Tenta novamente.")
     return {"questoes": questoes}
 
-# ─── Health ───────────────────────────────────────────────────────────────────
-
-@api.get("/")
-async def root():
-    return {"message": "Grelhas API"}
-
-app.include_router(api)
-
 # ─── Cópia de segurança ───────────────────────────────────────────────────────
 
 BACKUP_VERSAO = 1
@@ -1379,6 +1371,14 @@ async def restaurar_backup(body: TurmaBackupIn, user: dict = Depends(require_tea
     log.info(f"Cópia restaurada ({acao}) turma {tid} por {user.get('email')}: {len(alunos)} alunos, {len(instrumentos)} instrumentos")
     return {"acao": acao, "turma_id": tid, "alunos": len(alunos), "instrumentos": len(instrumentos)}
 
+
+# ─── Health ───────────────────────────────────────────────────────────────────
+
+@api.get("/")
+async def root():
+    return {"message": "Grelhas API"}
+
+app.include_router(api)
 
 # ─── Startup ──────────────────────────────────────────────────────────────────
 

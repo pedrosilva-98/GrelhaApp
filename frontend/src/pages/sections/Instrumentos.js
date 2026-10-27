@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy, FileSpreadsheet } from "lucide-react";
+import { Plus, X, Trash2, FilePlus, Pencil, ClipboardCheck, FileText, Sparkles, Save, ListOrdered, Copy, FileSpreadsheet, ClipboardList } from "lucide-react";
 import { exportInstrumentoExcel, exportTodosInstrumentosExcel } from "@/lib/excel";
-import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio, outrasMedidas, temMedidas } from "@/lib/grelha";
+import { abrirResumoInstrumentoPDF } from "@/lib/resumoInstrumento";
+import { TIPOS_INSTRUMENTO, TIPOS_SEM_NOTA_FINAL, domColor, odEntry, rankingAprendizagens, cotacaoAlvo, somaCotacoesPorDominio, outrasMedidas, temMedidas, distribuicaoQuestoes } from "@/lib/grelha";
 
 function buildInitial(dominios) {
     return {
@@ -240,7 +241,8 @@ export default function Instrumentos({
                             As questões de cada domínio avaliado têm de somar {alvo} pontos.
                         </p>
                         {domsAvaliados.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-4" data-testid="somas-dominio">
+                            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 mb-4">
+                            <div className="flex flex-wrap gap-2" data-testid="somas-dominio">
                                 {domsAvaliados.map((d) => {
                                     const v = somasDom[d.code];
                                     const ok = Math.abs(v - alvo) <= 0.01;
@@ -254,6 +256,14 @@ export default function Instrumentos({
                                         </span>
                                     );
                                 })}
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-charcoal/70" data-testid="pct-questoes-dominio">
+                                {distribuicaoQuestoes(form.questoes.filter((q) => q.cotacao !== ""), dominios).map((d) => (
+                                    <span key={d.code} data-testid={`pct-questoes-${d.code}`}>
+                                        <strong style={{ color: domByCode[d.code]?.color }}>{d.code}</strong> - {Math.round(d.pct)}% das questões
+                                    </span>
+                                ))}
+                            </div>
                             </div>
                         )}
                         <div className="space-y-4">
@@ -427,6 +437,9 @@ export default function Instrumentos({
                                         </button>
                                         <button data-testid={`relatorio-inst-${inst.id}`} onClick={() => onExportRelatorio && onExportRelatorio(inst)} className="btn-ghost !px-2 !py-1.5" title="Exportar relatório por aprendizagens (PDF)">
                                             <FileText size={14} />
+                                        </button>
+                                        <button data-testid={`resumo-inst-${inst.id}`} onClick={() => abrirResumoInstrumentoPDF({ turma, alunos, inst })} className="btn-ghost !px-2 !py-1.5" title="Resumo do instrumento de avaliação (PDF)">
+                                            <ClipboardList size={14} />
                                         </button>
                                         <button data-testid={`excel-inst-${inst.id}`} onClick={() => exportInstrumentoExcel({ turma, alunos, inst })} className="btn-ghost !px-2 !py-1.5" title="Exportar registos deste instrumento (Excel)">
                                             <FileSpreadsheet size={14} />

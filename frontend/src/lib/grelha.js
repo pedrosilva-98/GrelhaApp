@@ -377,3 +377,21 @@ export function siglasDL54(aluno) {
     if (outrasMedidas(aluno).some((g) => isArt28(g.tipo))) out.push("Art.28");
     return out;
 }
+
+// Distribuição das questões de um instrumento pelos domínios (pela quantidade de questões).
+export function distribuicaoQuestoes(questoes, dominios) {
+    const qs = (questoes || []).filter((q) => q.dom);
+    const total = qs.length;
+    return (dominios || [])
+        .map((d) => {
+            const doDom = qs.filter((q) => q.dom === d.code);
+            return {
+                code: d.code,
+                nome: d.nome,
+                n: doDom.length,
+                pct: total ? (doDom.length / total) * 100 : 0,
+                pontos: doDom.reduce((s, q) => s + (parseFloat(q.cotacao) || 0), 0),
+            };
+        })
+        .filter((x) => x.n > 0);
+}
